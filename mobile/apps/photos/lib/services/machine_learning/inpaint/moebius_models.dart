@@ -9,28 +9,27 @@ import "package:photos/src/rust/api/inpaint_api.dart"
 /// point) and cached on device by [RemoteAssetsService]. The Rust pipeline loads
 /// them from the returned filesystem paths; nothing is loaded in Dart.
 ///
-/// NOTE: for now these are the upstream fp32 graphs hosted on HuggingFace
-/// (~1.24 GB total). Once validated they will move to the Ente CDN.
+/// NOTE: for now these are fp16 graphs hosted on a temporary dev asset host
+/// (~0.6 GB total). Once validated they will move to the Ente CDN.
 class MoebiusModels {
   static final _logger = Logger("MoebiusModels");
 
-  static const String _base =
-      "https://huggingface.co/simonw/Moebius-ONNX/resolve/main/";
+  static const String _base = "https://entedevassets.priem.dev/";
 
-  static const String unetUrl = "${_base}unet.onnx";
-  static const String vaeEncoderUrl = "${_base}vae_encoder.onnx";
-  static const String vaeDecoderUrl = "${_base}vae_decoder.onnx";
+  static const String unetUrl = "${_base}unet_fp16.onnx";
+  static const String vaeEncoderUrl = "${_base}vae_encoder_fp16.onnx";
+  static const String vaeDecoderUrl = "${_base}vae_decoder_fp16.onnx";
 
-  // SHA-256 of the published fp32 graphs (HuggingFace LFS oids).
+  // SHA-256 of the fp16 graphs.
   static const String _unetSha =
-      "e3f90f52f72378339b990459fadb29a68d3c7b5c6851545ba42774f489160b08";
+      "f0995182c30d92ef32c54f048b0906c26534d65def9aeffd01521da8280bdb90";
   static const String _vaeEncoderSha =
-      "b8b81d41e757222a0707665ba9d826703987855e5bed056036b90b988968042f";
+      "c4a8c399498bea2c5817e1701f5a59e312a5be0a09139157f7934743eecb98e8";
   static const String _vaeDecoderSha =
-      "d90ef0b7f6c8c8b7234459c8b449d70be0033bf1576c842e8b9991baf3934280";
+      "2c51ab793f17a91246ce97c0f553751355b9de9b896051739d72762ab1c9c0fd";
 
   /// Approximate combined on-disk size, used for the first-run download prompt.
-  static const int approxTotalBytes = 906698976 + 198078671 + 136757093;
+  static const int approxTotalBytes = 459820322 + 101260614 + 70585594;
 
   /// All three model URLs, useful for filtering [RemoteAssetsService.progressStream].
   static const List<String> urls = [unetUrl, vaeEncoderUrl, vaeDecoderUrl];

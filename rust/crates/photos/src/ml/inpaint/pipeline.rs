@@ -277,16 +277,29 @@ fn run_unet(
     timesteps: [i64; 2],
     input_ids: &[i64],
 ) -> MlResult<Vec<f32>> {
-    let latent_tensor =
-        Tensor::<f32>::from_array(([2i64, 9, LAT as i64, LAT as i64], latent_batch))?;
+    let latent_shape = [2i64, 9, LAT as i64, LAT as i64];
     let timesteps_tensor = Tensor::<i64>::from_array(([2i64], timesteps.to_vec()))?;
     let input_ids_tensor = Tensor::<i64>::from_array(([2i64, 10], input_ids.to_vec()))?;
 
-    let outputs = session.run(ort::inputs![
-        "latent" => latent_tensor,
-        "timesteps" => timesteps_tensor,
-        "input_ids" => input_ids_tensor,
-    ]?)?;
+    // The fp16 U-Net wants an fp16 `latent` input (timesteps/input_ids stay
+    // int64); the fp32 U-Net wants f32. Build whichever the model expects.
+    let outputs = if onnx::session_expects_f16(session) {
+        let f16_latent: Vec<half::f16> =
+            latent_batch.into_iter().map(half::f16::from_f32).collect();
+        let latent_tensor = Tensor::<half::f16>::from_array((latent_shape, f16_latent))?;
+        session.run(ort::inputs![
+            "latent" => latent_tensor,
+            "timesteps" => timesteps_tensor,
+            "input_ids" => input_ids_tensor,
+        ]?)?
+    } else {
+        let latent_tensor = Tensor::<f32>::from_array((latent_shape, latent_batch))?;
+        session.run(ort::inputs![
+            "latent" => latent_tensor,
+            "timesteps" => timesteps_tensor,
+            "input_ids" => input_ids_tensor,
+        ]?)?
+    };
 
     if outputs.is_empty() {
         return Err(MlError::Ort("U-Net produced no output".to_string()));

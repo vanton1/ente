@@ -121,7 +121,7 @@ fn build_session_with_providers(
 }
 
 /// Returns true if the session's first input expects FP16 tensors.
-fn session_expects_f16(session: &Session) -> bool {
+pub(crate) fn session_expects_f16(session: &Session) -> bool {
     session
         .inputs
         .first()
