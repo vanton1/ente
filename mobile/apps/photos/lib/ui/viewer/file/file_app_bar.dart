@@ -45,6 +45,7 @@ class FileAppBar extends StatefulWidget {
   final EnteFile file;
   final Function(EnteFile) onFileRemoved;
   final Function(EnteFile) onEditRequested;
+  final Function(EnteFile)? onAIEditRequested;
   final ValueNotifier<bool> enableFullScreenNotifier;
   final GalleryType? galleryType;
   final DetailPageMode mode;
@@ -55,6 +56,7 @@ class FileAppBar extends StatefulWidget {
     this.file,
     this.onFileRemoved,
     this.onEditRequested, {
+    this.onAIEditRequested,
     required this.enableFullScreenNotifier,
     this.galleryType,
     this.mode = DetailPageMode.full,
@@ -353,6 +355,22 @@ class FileAppBarState extends State<FileAppBar> {
           ),
         );
       }
+      // AI edit (object removal). Requires ML consent, images only. Available to
+      // internal users, and always in local gallery mode (where there is no
+      // internal-user concept).
+      if (widget.showEditAction &&
+          widget.onAIEditRequested != null &&
+          widget.file.fileType == FileType.image &&
+          hasGrantedMLConsent &&
+          (flagService.internalUser || isLocalGalleryMode)) {
+        items.add(
+          _fileMenuOption(
+            AppLocalizations.of(context).aiEdit,
+            value: 15,
+            hugeIcon: HugeIcons.strokeRoundedAiImage,
+          ),
+        );
+      }
       // Add to Album option - shown when file is in shared collection
       // (moved from bottom bar to make room for social icons)
       if (isInSharedCollection && isFileUploaded && !isFileHidden) {
@@ -556,6 +574,8 @@ class FileAppBarState extends State<FileAppBar> {
       await _handleVideoStream('recreate');
     } else if (value == 11) {
       widget.onEditRequested(widget.file);
+    } else if (value == 15) {
+      widget.onAIEditRequested?.call(widget.file);
     } else if (value == 12) {
       await showDetailsSheet(context, widget.file);
     } else if (value == 13) {

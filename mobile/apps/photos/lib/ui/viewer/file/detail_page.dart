@@ -23,6 +23,7 @@ import "package:photos/services/local_authentication_service.dart";
 import "package:photos/states/detail_page_state.dart";
 import "package:photos/ui/common/fast_scroll_physics.dart";
 import 'package:photos/ui/notification/toast.dart';
+import "package:photos/ui/tools/editor/ai_erase/ai_erase_page.dart";
 import "package:photos/ui/tools/editor/image_editor/image_editor_page.dart";
 import "package:photos/ui/tools/editor/video_editor_page.dart";
 import "package:photos/ui/viewer/file/file_app_bar.dart";
@@ -235,6 +236,7 @@ class _BodyState extends State<_Body> {
                 _files![selectedIndex],
                 _onFileRemoved,
                 _onEditFileRequested,
+                onAIEditRequested: _onAIEditFileRequested,
                 enableFullScreenNotifier: InheritedDetailPageState.of(
                   context,
                 ).enableFullScreenNotifier,
@@ -558,6 +560,52 @@ class _BodyState extends State<_Body> {
     } catch (e) {
       await dialog.hide();
       _logger.warning("Failed to initiate edit", e);
+    }
+  }
+
+  Future<void> _onAIEditFileRequested(EnteFile file) async {
+    if (file.uploadedFileID != null &&
+        file.ownerID != Configuration.instance.getUserID()) {
+      // ignore: unawaited_futures
+      showErrorDialog(
+        context,
+        AppLocalizations.of(context).sorry,
+        AppLocalizations.of(
+          context,
+        ).weDontSupportEditingPhotosAndAlbumsThatYouDont,
+      );
+      return;
+    }
+    final dialog = createProgressDialog(
+      context,
+      AppLocalizations.of(context).pleaseWait,
+    );
+    await dialog.show();
+    try {
+      final ioFile = await getFile(file);
+      if (ioFile == null) {
+        showShortToast(
+          context,
+          AppLocalizations.of(context).failedToFetchOriginalForEdit,
+        );
+        await dialog.hide();
+        return;
+      }
+      await dialog.hide();
+      replacePage(
+        context,
+        AiErasePage(
+          originalFile: file,
+          file: ioFile,
+          detailPageConfig: widget.config.copyWith(
+            files: _files,
+            selectedIndex: _selectedIndexNotifier.value,
+          ),
+        ),
+      );
+    } catch (e) {
+      await dialog.hide();
+      _logger.warning("Failed to initiate AI edit", e);
     }
   }
 
