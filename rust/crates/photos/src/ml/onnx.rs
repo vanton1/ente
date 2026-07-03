@@ -16,7 +16,33 @@ use crate::ml::{
     runtime::ExecutionProviderPolicy,
 };
 
+/// Per-session tuning knobs.
+///
+/// The default keeps sessions single-threaded, which is deliberate for the
+/// background indexing models (CLIP, faces, pets): they should never hog cores
+/// from the UI. Interactive pipelines (inpainting) opt into more threads via
+/// [`build_session_tuned`].
+#[derive(Clone, Copy, Debug)]
+pub struct SessionTuning {
+    /// Thread count for ORT's intra-op pool.
+    pub intra_threads: usize,
+}
+
+impl Default for SessionTuning {
+    fn default() -> Self {
+        Self { intra_threads: 1 }
+    }
+}
+
 pub fn build_session(model_path: &str, policy: &ExecutionProviderPolicy) -> MlResult<Session> {
+    build_session_tuned(model_path, policy, SessionTuning::default())
+}
+
+pub fn build_session_tuned(
+    model_path: &str,
+    policy: &ExecutionProviderPolicy,
+    tuning: SessionTuning,
+) -> MlResult<Session> {
     let primary_providers = providers_for_policy(policy, true);
     let mut attempts = vec![primary_providers];
 
@@ -42,7 +68,7 @@ pub fn build_session(model_path: &str, policy: &ExecutionProviderPolicy) -> MlRe
             continue;
         }
 
-        match build_session_with_providers(model_path, providers) {
+        match build_session_with_providers(model_path, providers, tuning) {
             Ok(session) => return Ok(session),
             Err(error) => errors.push(format!("{error}")),
         }
@@ -108,10 +134,11 @@ fn providers_for_policy(
 fn build_session_with_providers(
     model_path: &str,
     providers: Vec<ExecutionProviderDispatch>,
+    tuning: SessionTuning,
 ) -> MlResult<Session> {
     let mut builder = Session::builder()?
         .with_optimization_level(GraphOptimizationLevel::Level3)?
-        .with_intra_threads(1)?
+        .with_intra_threads(tuning.intra_threads.max(1))?
         .with_inter_threads(1)?;
 
     builder = builder.with_execution_providers(providers)?;

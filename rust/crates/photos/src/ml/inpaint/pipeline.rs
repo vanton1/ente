@@ -216,6 +216,19 @@ pub fn run(
     })
 }
 
+/// Thread count for the interactive inpaint sessions. Unlike the background
+/// indexing models (which deliberately stay single-threaded), inpainting is a
+/// foreground, user-visible wait, so it should use the performance cores.
+/// Heuristic: half the logical cores targets the big+mid cluster on typical
+/// big.LITTLE phone SoCs without dragging in the slow little cores.
+fn inpaint_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .div_ceil(2)
+        .clamp(2, 6)
+}
+
 /// input_ids for the CFG batch: row 0 = uncond [10..20), row 1 = cond [0..10).
 fn cfg_input_ids() -> Vec<i64> {
     let mut ids = Vec::with_capacity(20);
