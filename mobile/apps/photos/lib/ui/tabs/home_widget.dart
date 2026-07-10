@@ -188,16 +188,11 @@ class _HomeWidgetState extends State<HomeWidget> {
           "TabChange going from $previousTabIndex to ${event.selectedIndex} source: ${event.source}",
         );
         if (_pageController.hasClients) {
-          final pageDelta = (event.selectedIndex - previousTabIndex).abs();
-          if (pageDelta <= 1) {
-            _pageController.animateToPage(
-              event.selectedIndex,
-              duration: const Duration(milliseconds: 100),
-              curve: Curves.easeIn,
-            );
-          } else {
-            _pageController.jumpToPage(event.selectedIndex);
-          }
+          _pageController.animateToPage(
+            event.selectedIndex,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+          );
         }
       }
     });
