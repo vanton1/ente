@@ -1,0 +1,208 @@
+# Locked Self-Hosted Ente Photos for iOS
+
+**Status:** Living document. Updated at the end of every task.
+**Started:** 2026-07-13
+**Owner:** vanton
+**Planning doc:** n/a
+**Companion docs:** `mobile/apps/photos/README.md`, `docs/docs/self-hosting/installation/post-install/index.md`, `docs/docs/self-hosting/administration/object-storage.md`
+
+---
+
+## 1. Phase / Task tracker
+
+| Phase | Task | Title | Size | Status | Notes |
+|------:|----:|-------|:----:|--------|-------|
+| 1 | 1.1 | Align the repository-pinned mobile toolchain and generated bindings | M | 🟢 done | Verified Flutter 3.38.10, native rustup Rust 1.97.0, locked Flutter packages, unchanged generated Rust bindings, and a deployment-clean CocoaPods graph. Refreshed stale plugin spec checksums in `Podfile.lock`. |
+| 1 | 1.2 | Produce an unchanged Photos build for an iOS simulator | S | ⚪ not started | Establish that the upstream Photos app compiles before endpoint behavior changes. |
+| 1 | 1.3 | Preflight Museum and object-storage reachability | S | ⚪ not started | Verify `/ping`, server-provided application URLs, and client-reachable object storage through the chosen HTTPS hostname. |
+| 2 | 2.1 | Add and unit-test the fail-closed endpoint policy | M | ⚪ not started | Cover locked and normal builds, endpoint-state binding, background startup, and authenticated request-origin enforcement. |
+| 2 | 2.2 | Disable endpoint editing and add the locked-build command | S | ⚪ not started | Preserve the read-only endpoint indicator and document every required build input. |
+| 2 | 2.3 | Add the core-only self-hosted iOS target and signing configuration | M | ⚪ not started | Use a unique personal bundle ID and development-safe entitlements without the production extension suite. |
+| 3 | 3.1 | Verify the locked build end to end in the simulator | M | ⚪ not started | Exercise registration or login, sync, upload, download, restart persistence, and negative configuration cases. |
+| 3 | 3.2 | Install and verify the locked build on a physical iPhone | M | ⚪ not started | Confirm personal signing, local-network access, object storage, and the critical photo flows. |
+
+**Legend:** ⚪ not started · 🟡 working · 🟢 done · 🔴 blocked / needs decision
+**Size:** XS · S · M · L · XL (never days or weeks).
+
+One task is one reviewable step. Mark a row 🟡 working before implementation and 🟢 done after its verification passes. Use `Task <phase>.<sub> — <short imperative title>` for corresponding commits.
+
+---
+
+## 2. Goal
+
+Create a personal-development iOS build of Ente Photos that is permanently bound to one self-hosted Museum HTTPS origin. A successful V1 builds and runs on an iOS simulator and a personally signed iPhone, supports registration or login plus photo sync, upload, and download, cannot be switched to Ente's production API, and fails before authenticated networking when its endpoint configuration or local endpoint identity is unsafe. Normal Ente builds must retain their current production and developer-endpoint behavior.
+
+---
+
+## 3. Architecture / approach
+
+The existing Photos app already accepts an `endpoint` Dart define and stores a runtime endpoint override. V1 extends that mechanism with an explicit `lockedEndpoint` compile-time policy rather than introducing a separate Dart application bootstrap.
+
+In a normal build, endpoint behavior remains unchanged. In a locked build:
+
+- The compiled endpoint must be an absolute HTTPS Museum origin and must not be either Ente production origin.
+- Foreground and background entrypoints validate the policy before creating any network client.
+- The compiled endpoint takes precedence over preferences, runtime endpoint mutation is rejected, and the seven-tap editor is inert. The existing custom-endpoint label remains as a read-only indicator.
+- The app stores an endpoint-identity binding on a clean first launch. Existing account/endpoint state or a different binding fails closed with local reset instructions; the app never silently erases local data.
+- Authenticated Museum requests must remain on the compiled origin and must not follow cross-origin redirects. Presigned object-storage requests remain allowed because Museum intentionally sends those through the non-Museum download/upload clients.
+- Invalid foreground startup renders a local diagnostic view without initializing networking. Invalid background startup records a local error and returns without networking.
+
+The supported build path uses a wrapper that validates `ENTE_SELF_HOSTED_ENDPOINT` and supplies `lockedEndpoint=true` plus the endpoint define. A core-only `SelfHostedRunner` target and shared `selfhosted` scheme use a unique personal bundle ID, a local Apple development-team setting, and development-safe entitlements. They do not depend on or embed the production Share Extension and widgets. The official Runner target stays unchanged.
+
+The intended flow is:
+
+```text
+build wrapper -> validate HTTPS self-host origin -> compile locked policy
+      |
+      v
+app startup -> validate policy and endpoint binding -> initialize Museum client
+      | invalid                                  | valid
+      v                                          v
+local diagnostic, no networking            account and photo flows
+```
+
+---
+
+## 4. Future work / out-of-scope
+
+> Single source of truth for everything that is NOT in V1. Items move into V1 only with explicit approval and a decision-log entry.
+
+| Item | Status | Why |
+|------|--------|-----|
+| Push notifications, Share Extension, widgets, and application groups for the personal target | V1.1 backlog | V1 proves the core Photos account and media flows without provisioning Ente's complete Apple target suite. |
+| Self-host or disable Ente-operated ancillary services such as Sentry, update checks, payments, and model assets | Out of scope | The chosen V1 guarantee applies only to the Museum API. |
+| Network-wide allowlisting or an air-gapped build | Out of scope | Third-party maps, legal links, model downloads, and other non-Museum networking remain permitted. |
+| HTTP LAN endpoints | Out of scope | The chosen deployment uses a trusted HTTPS hostname reachable by both simulator and iPhone. |
+| Ad hoc, TestFlight, or App Store distribution | Out of scope | V1 uses personal development signing only. |
+| Runtime server switching in the locked artifact | Out of scope | Immutability is the purpose of the locked build; changing servers requires rebuilding and clearing the installation. |
+| Generic self-hosted build support for all contributors and mobile apps | Out of scope | V1 targets one personal Ente Photos iOS workflow rather than an upstream-wide flavor system. |
+| Separate architecture companion document | Out of scope | The endpoint policy and packaging path are compact enough to document here and in the build runbook. |
+
+**Status values:**
+- `V1.1 backlog` — deferred but planned for the next milestone.
+- `Out of scope` — will not be done in this initiative; distinct from deferred work.
+
+---
+
+## 5. Decision log
+
+> Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
+
+### 2026-07-13 — Isolate work in a personal GitHub fork
+
+**Decision:** Preserve `https://github.com/ente/ente.git` as the read-only `upstream` remote, use `https://github.com/vanton1/ente.git` as `origin`, and push task commits on the `codex/locked-self-hosted-ios` feature branch.
+
+**Why:** Development and pushes must not interfere with the original Ente repository or its `main` branch.
+
+**Alternatives considered:** Commit directly on the local `main` branch, or leave the official repository configured as the push remote.
+
+### 2026-07-13 — Refresh stale Photos podspec checksums
+
+**Decision:** Regenerate the Photos `Podfile.lock` checksum block from the locked Dart dependency graph and accept the resulting spec-checksum-only change.
+
+**Why:** The checked-in Photos lockfile predated the mobile Dart-workspace migration and later `mobile/pubspec.lock` update. CocoaPods 1.16.2 rejected it in deployment mode even though every pod version, external source, Podfile checksum, and CocoaPods version remained unchanged. The regenerated lockfile now passes `pod install --deployment`.
+
+**Alternatives considered:** Keep the stale lockfile and bypass deployment verification, or upgrade pod versions as part of this task. Both would weaken reproducibility or expand scope unnecessarily.
+
+### 2026-07-13 — Use isolated pinned mobile toolchains
+
+**Decision:** Run the project with an isolated Flutter 3.38.10 checkout and put rustup's native Apple-silicon Rust 1.97.0 ahead of the incompatible Homebrew Rust installation in build commands.
+
+**Why:** The system Flutter is 3.41.7, while the repository and CI pin 3.38.10. The shell's Homebrew Rust 1.84 is both too old for Edition 2024 and broken against its installed LLVM; the rustup toolchain parses the workspace and completes bridge generation.
+
+**Alternatives considered:** Modify the system Flutter checkout, or repair/replace Homebrew Rust globally. Isolated command paths avoid changing unrelated projects.
+
+### 2026-07-13 — Use repository documentation as project context
+
+**Decision:** Link the Photos build instructions and repository self-hosting documentation; do not link unrelated local planning files or create a separate architecture companion.
+
+**Why:** These are the sources that define the current client build and Museum/object-storage requirements.
+
+**Alternatives considered:** Add unrelated local plans, require external deployment notes, or create a separate as-built architecture document.
+
+### 2026-07-13 — Fail closed and require manual reset
+
+**Decision:** Invalid build configuration and endpoint-identity mismatches stop before networking and show local instructions to clear or reinstall the app. Do not erase local state automatically.
+
+**Why:** This prevents production credentials or databases from being mixed with a self-hosted server and avoids silent destructive behavior.
+
+**Alternatives considered:** Automatically clear local state, or terminate with logs and no user-visible diagnostic.
+
+### 2026-07-13 — Add a core-only self-hosted Apple target
+
+**Decision:** Add a minimal self-hosted development target and scheme with a personal bundle identity and no production extension dependencies.
+
+**Why:** The existing project embeds extensions and entitlements owned by Ente's Apple Developer team, so a reproducible personal iPhone build cannot sign the existing target unchanged.
+
+**Alternatives considered:** Keep fragile uncommitted Xcode edits, or parameterize and provision the entire extension suite.
+
+### 2026-07-13 — Use personal development signing
+
+**Decision:** V1 installs from Flutter/Xcode on the owner's simulator and iPhone, using a unique personal bundle identity.
+
+**Why:** Distribution to other devices and App Store Connect are not required to prove the self-hosted workflow.
+
+**Alternatives considered:** Ad hoc team distribution and TestFlight distribution.
+
+### 2026-07-13 — Require a shared HTTPS hostname
+
+**Decision:** Museum and object storage must be reachable through trusted HTTPS addresses from both simulator and iPhone.
+
+**Why:** An iPhone cannot use the Mac's `localhost`, and client-reachable object-storage URLs are required for media transfers.
+
+**Alternatives considered:** A changing LAN IP over HTTP, or Mac-only loopback that cannot satisfy the physical-device goal.
+
+### 2026-07-13 — Prove simulator and iPhone behavior
+
+**Decision:** Validate on a simulator first, then repeat critical flows on a physical iPhone.
+
+**Why:** Simulator feedback shortens build iteration while the phone exposes real signing, local-network, and object-storage reachability problems.
+
+**Alternatives considered:** Physical iPhone only, or simulator only.
+
+### 2026-07-13 — Sequence work risk first
+
+**Decision:** Align the toolchain, prove the unchanged iOS build, and preflight the server before implementing endpoint policy changes.
+
+**Why:** The current Flutter and Rust installations do not match repository requirements, so build feasibility is the first meaningful risk.
+
+**Alternatives considered:** Implement an end-to-end vertical slice immediately, or finish policy code before attempting an iOS build.
+
+### 2026-07-13 — Encode locking as a compile-time policy
+
+**Decision:** Extend the current endpoint configuration with a locked compile-time mode and retain the existing Dart entrypoint.
+
+**Why:** This adds the required invariant with less bootstrap duplication than a second Dart entrypoint and keeps endpoint behavior testable in one place.
+
+**Alternatives considered:** A separate self-hosted Dart entrypoint, or making all endpoint behavior depend on Xcode schemes and build settings.
+
+### 2026-07-13 — Lock only the Museum API in V1
+
+**Decision:** Make the Museum origin immutable and reject Ente production API origins while leaving ancillary and third-party services unchanged.
+
+**Why:** The requested server isolation concerns account and photo data without expanding V1 into an air-gapped fork.
+
+**Alternatives considered:** Disable all Ente-operated services, or enforce a network-wide host allowlist.
+
+### 2026-07-13 — Build a locked self-hosted artifact
+
+**Decision:** Produce a separate personal Ente Photos binary that cannot be switched to Ente production.
+
+**Why:** A runtime-selectable local development build does not satisfy the requested guarantee that the artifact use the self-hosted server rather than the official one.
+
+**Alternatives considered:** A personal build retaining the hidden endpoint switcher, or a generic contributor-facing build workflow.
+
+---
+
+## 6. Open questions
+
+- What trusted HTTPS Museum origin will be supplied as `ENTE_SELF_HOSTED_ENDPOINT` for Tasks 1.3 and later?
+- What Apple development-team identifier and unique bundle identifier will be used for Task 2.3?
+
+---
+
+## 7. Lessons learned
+
+> Populated at the end of each phase. Record surprises, anti-patterns, and improvements for the next phase.
+
+_Empty until first phase completes._
