@@ -17,7 +17,7 @@
 | 2 | 2.1 | Add the self-hosted flavor and guarded Android build wrapper | M | 🟢 done | Added the `selfhosted` flavor with release application ID `com.vanton1.ente.photos.selfhosted`, the normal `.debug` suffix for debug builds, a no-referrer fallback for the flavor-aware install-source plugin, and the standard launcher manifest overlay. Added a guarded APK wrapper that reuses the Dart endpoint validator, injects only `lockedEndpoint=true` plus the canonical endpoint, and rejects caller flavor or Dart-define overrides. Gradle exposed self-hosted debug/profile/release tasks alongside every existing flavor, generated both expected application IDs, and left the official flavor blocks unchanged. |
 | 2 | 2.2 | Test the Android flavor, wrapper, endpoint lock, and APK identity | M | 🟢 done | Passed all 20 endpoint-policy and developer-settings tests in both normal and real locked-define modes. Verified one canonical wrapper invocation and nine fail-closed cases covering missing or unsafe endpoints, validation arity, Dart-define forms, and flavor overrides. Built and audited the 554,898,085-byte `selfhostedDebug` APK: package `com.vanton1.ente.photos.selfhosted.debug`, minimum API 26, target API 36, Android Debug signature, ARMv7/ARM64/x86_64 libraries, intact ZIP, canonical local hostname and lock policy in the Flutter kernel, correct launcher merge, and SHA-256 `1bf6391069960ef39c6bf15b8809480778bc13aa9cd8b4b321318e5e777a14cb`. Rebuilt `independentDebug` and confirmed its original package, SDK range, ABIs, and signer; SHA-256 `8d6247d670940d2ee91f31f90d37c7eea6e0d98f25fd916f3257fcf94ae97658`. |
 | 3 | 3.1 | Verify the locked Android build end to end in an emulator | M | 🟢 done | Installed the checksum-audited local-server APK on the API 36 ARM64 emulator and verified the initial server identity, account recovery/login, and persisted authentication across both an app cold start and a full emulator restart. Uploaded a controlled image; Museum recorded the self-hosted debug package creating its collection, obtaining signed object URLs, and committing encrypted file metadata with HTTP 200. After the source disappeared from Android shared storage, a cold-started app requested `/files/download/10000005`, received the signed-object redirect, and rendered the decrypted full image. An in-place same-package build for `https://other.example` stopped on the local endpoint-binding diagnostic before creating a network client; Museum recorded zero package requests after launch. Reinstalling the preserved local-server APK retained the session and returned to home. Restored the canonical 554,898,085-byte output with SHA-256 `1bf6391069960ef39c6bf15b8809480778bc13aa9cd8b4b321318e5e777a14cb`, then shut down the preserved AVD. |
-| 3 | 3.2 | Sign and verify the locked Android build on a physical device | M | ⚪ not started | Create or reuse a local signing key outside Git, build and audit a release APK, install it on a physical Android device, and repeat the critical account, media, restart, and server-evidence checks. |
+| 3 | 3.2 | Sign and verify the locked Android build on a physical device | M | 🔴 blocked / needs device | Created an external RSA-4096 release keystore with its generated password held in the macOS login Keychain and only the ignored keystore path/alias in local Gradle properties. Built and audited the 262,701,461-byte release APK: package `com.vanton1.ente.photos.selfhosted`, version `1.3.59`, minimum API 26, target API 36, ARMv7/ARM64 libraries, intact ZIP, canonical local endpoint in the AOT library, valid APK Signature Scheme v2 signature with certificate SHA-256 `9f0a5f39668e7098d097745931bcb8fc392d50da877cf349a2b20e2db1a4ce69`, and artifact SHA-256 `2f5f6011035e396f7b1d3660fe7043fc509115554dcca2051e3fe5a868461fc8`. Preserved the exact APK at `/Users/vanton/projects/ente-android-toolchain/artifacts/ente-photos-selfhosted-1.3.59-release.apk`. Physical installation and the account, media, restart, and server-evidence checks remain blocked until a device is available. |
 
 **Legend:** ⚪ not started · 🟡 working · 🟢 done · 🔴 blocked / needs decision
 **Size:** XS · S · M · L · XL (never days or weeks).
@@ -84,6 +84,22 @@ V1 locks authenticated Museum traffic only, matching the iOS security boundary. 
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
+
+### 2026-07-13 — Regenerate release-only Android plugins before packaging
+
+**Decision:** Run the final locked release build with Flutter's normal dependency and platform preparation instead of passing `--no-pub` against previously generated debug state.
+
+**Why:** A cold release attempt with `--no-pub` reused an ignored debug `GeneratedPluginRegistrant.java` that referenced `flutter_native_splash` and `integration_test`, while Flutter correctly excluded those development-only plugins from the release classpath. Normal release preparation regenerated the registrant without those entries and produced the signed APK from the cached native outputs.
+
+**Alternatives considered:** Promote development-only plugins into the release runtime, manually edit or delete the ignored generated Java file, or teach the self-hosted wrapper to rewrite Flutter-generated plugin code.
+
+### 2026-07-13 — Keep Android signing secrets in the login Keychain
+
+**Decision:** Store the personal release keystore under `/Users/vanton/projects/ente-android-toolchain/signing`, keep its generated password in the macOS login Keychain service `ente-photos-selfhosted-release`, and place only the absolute keystore path and alias in ignored `android/key.properties`.
+
+**Why:** Gradle already supports combining local properties with `SIGNING_*` environment variables. Retrieving the password from Keychain only for the build avoids committing it or keeping it in a plaintext properties file while preserving a reusable local signing identity.
+
+**Alternatives considered:** Put the password directly in ignored `key.properties`, type credentials for every build, or store every signing input only in transient shell environment variables.
 
 ### 2026-07-13 — Cap emulator CPU and use the host GPU
 
