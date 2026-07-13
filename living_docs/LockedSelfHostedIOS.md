@@ -14,7 +14,9 @@
 |------:|----:|-------|:----:|--------|-------|
 | 1 | 1.1 | Align the repository-pinned mobile toolchain and generated bindings | M | 🟢 done | Verified Flutter 3.38.10, native rustup Rust 1.97.0, locked Flutter packages, unchanged generated Rust bindings, and a deployment-clean CocoaPods graph. Refreshed stale plugin spec checksums in `Podfile.lock`. |
 | 1 | 1.2 | Produce an unchanged Photos build for an iOS simulator | S | 🟢 done | Built and signature-verified the unchanged `io.ente.frame.debug` app at `mobile/apps/photos/build/ios/Debug-iphonesimulator/Runner.app` for the arm64 iOS Simulator. Recorded the clean-checkout generation and machine setup prerequisites below. |
-| 1 | 1.3 | Preflight Museum and object-storage reachability | S | ⚪ not started | Verify `/ping`, server-provided application URLs, and client-reachable object storage through the chosen HTTPS hostname. |
+| 1 | 1.3 | Install and verify a local Ente quickstart cluster | S | 🟢 done | Installed the official Docker quickstart outside Git at `/Users/vanton/projects/my-ente`. Verified healthy Museum and PostgreSQL containers, Museum `/ping`, MinIO health, and HTTP 200 responses from the Photos and Albums web applications; restricted generated configuration files and all published HTTP ports to the local Mac. |
+| 1 | 1.4 | Expose Museum and MinIO through private Tailscale HTTPS | M | ⚪ not started | Install the supported macOS Tailscale client, complete user login, and publish only the API and object-storage ports inside the private tailnet. |
+| 1 | 1.5 | Preflight Museum and object-storage reachability | S | ⚪ not started | Verify `/ping`, server-provided application URLs, and client-reachable object storage through the chosen HTTPS hostname. |
 | 2 | 2.1 | Add and unit-test the fail-closed endpoint policy | M | ⚪ not started | Cover locked and normal builds, endpoint-state binding, background startup, and authenticated request-origin enforcement. |
 | 2 | 2.2 | Disable endpoint editing and add the locked-build command | S | ⚪ not started | Preserve the read-only endpoint indicator and document every required build input. |
 | 2 | 2.3 | Add the core-only self-hosted iOS target and signing configuration | M | ⚪ not started | Use a unique personal bundle ID and development-safe entitlements without the production extension suite. |
@@ -48,6 +50,8 @@ In a normal build, endpoint behavior remains unchanged. In a locked build:
 - Invalid foreground startup renders a local diagnostic view without initializing networking. Invalid background startup records a local error and returns without networking.
 
 The supported build path uses a wrapper that validates `ENTE_SELF_HOSTED_ENDPOINT` and supplies `lockedEndpoint=true` plus the endpoint define. A core-only `SelfHostedRunner` target and shared `selfhosted` scheme use a unique personal bundle ID, a local Apple development-team setting, and development-safe entitlements. They do not depend on or embed the production Share Extension and widgets. The official Runner target stays unchanged.
+
+The local deployment baseline is Ente's official Docker quickstart in `/Users/vanton/projects/my-ente`. It keeps PostgreSQL private to Docker while exposing Museum at `http://127.0.0.1:8080`, MinIO at `http://127.0.0.1:3200`, Photos web at `http://127.0.0.1:3000`, and Albums web at `http://127.0.0.1:3002`. These loopback HTTP addresses are local diagnostics only; the next deployment task adds private HTTPS for Museum and MinIO without publishing the web applications.
 
 The intended flow is:
 
@@ -87,6 +91,30 @@ local diagnostic, no networking            account and photo flows
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
+
+### 2026-07-13 — Bind quickstart HTTP ports to loopback
+
+**Decision:** Override the quickstart's published Museum, MinIO, Photos, and Albums ports to bind to `127.0.0.1` on the Mac. Tailscale Serve will proxy only Museum and MinIO from these loopback listeners in the next task.
+
+**Why:** The stock quickstart binds its published ports to every host interface. The chosen deployment should keep its unencrypted HTTP listeners and web applications local while granting remote devices access only through private HTTPS.
+
+**Alternatives considered:** Keep the default all-interface bindings or rely solely on the macOS firewall. Both make the deployment's intended access boundary less explicit than enforcing it in Docker Compose.
+
+### 2026-07-13 — Use private Tailscale HTTPS for the local server
+
+**Decision:** Run Ente's Docker quickstart locally, then expose only Museum and MinIO through Tailscale Serve over automatically provisioned HTTPS inside the owner's private tailnet. Keep the web applications on local HTTP for setup and diagnostics.
+
+**Why:** Both the simulator and physical iPhone need a stable, trusted HTTPS Museum origin and must reach the object-storage address embedded in presigned URLs. A private tailnet provides those properties without publishing the development server to the internet.
+
+**Alternatives considered:** Keep the installation on loopback HTTP only, or publish it through a public domain and Caddy. Loopback cannot serve the phone, while public exposure adds unnecessary DNS and internet-facing operations for a personal development server.
+
+### 2026-07-13 — Store the quickstart installation outside Git
+
+**Decision:** Create the generated Ente quickstart installation at `/Users/vanton/projects/my-ente` rather than inside the fork checkout.
+
+**Why:** The quickstart directory contains unique database, object-storage, Museum encryption, and JSON Web Token secrets alongside its Compose configuration. Keeping it outside the repository prevents accidental staging or publication.
+
+**Alternatives considered:** Create `my-ente` at the repository root or edit the checked-in sample configuration in place. Both put runtime secrets and mutable deployment state next to source control.
 
 ### 2026-07-13 — Preinitialize Rive Native from the Photos package
 
