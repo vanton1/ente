@@ -22,6 +22,7 @@
 | 2 | 2.3 | Add the core-only self-hosted iOS target and signing configuration | M | 🟢 done | Added the shared `selfhosted` scheme and `SelfHostedRunner` target with bundle ID `com.vanton1.ente.photos.selfhosted`, local team input, empty entitlements, a separate CocoaPods aggregate, and no extension dependencies. Verified a locked arm64 simulator artifact and reproducible pod installation while preserving the official Runner. |
 | 3 | 3.1 | Verify the locked build end to end in the simulator | M | 🟢 done | On an arm64 iOS 26.5 Simulator, registered a local account, synced, uploaded an encrypted image, downloaded it after device-local deletion, and preserved the account across restarts. A same-bundle build for a different valid HTTPS origin showed the local endpoint-binding diagnostic with zero Museum requests; restoring the correct build preserved the account and photo. Enabled Xcode ad-hoc signing so embedded simulator frameworks load correctly. |
 | 3 | 3.2 | Install and verify the locked build on a physical iPhone | M | 🟢 done | Built and audited a Personal Team-signed arm64 release, registered and provisioned the connected iPhone without committing personal identifiers, and installed and trusted the app. On iOS 26.5.2, registered a local account, synced, uploaded encrypted photos through private MinIO, downloaded a cloud copy after device-local deletion, and preserved the account and photo across a forced restart. Rebuilt, signature-verified, installed, and launched the simulator artifact after the signing changes. |
+| 4 | 4.1 | Prove the protected server snapshot restores in isolation | M | 🟢 done | Restored PostgreSQL and MinIO into uniquely named temporary resources, verified the expected account plus four files, eight active object keys, eight object copies, and all 14 bucket-object checksums, then started a healthy Museum on alternate loopback ports. Confirmed Museum-to-MinIO reachability, removed all temporary resources, revalidated the protected snapshot, and left the live stack healthy. |
 
 **Legend:** ⚪ not started · 🟡 working · 🟢 done · 🔴 blocked / needs decision
 **Size:** XS · S · M · L · XL (never days or weeks).
@@ -86,6 +87,8 @@ local diagnostic, no networking            account and photo flows
 | Generic self-hosted build support for all contributors and mobile apps | Out of scope | V1 targets one personal Ente Photos iOS workflow rather than an upstream-wide flavor system. |
 | Remote access to Photos companion web applications | Out of scope | V1 publishes only Museum and object storage to the private tailnet; public Albums, Cast, Accounts, and other web applications remain local or use the upstream ancillary defaults allowed by the Museum-only policy. |
 | Separate architecture companion document | Out of scope | The endpoint policy and packaging path are compact enough to document here and in the build runbook. |
+| Copy protected snapshots to encrypted off-machine storage | V1.1 backlog | The verified snapshot currently resides on the same Mac as the live server, so it does not protect against loss of that machine or disk. |
+| Automate protected snapshots, verification, and retention | V1.1 backlog | The first snapshot and restore drill were manual; recurring protection needs a reproducible schedule and retention policy. |
 
 **Status values:**
 - `V1.1 backlog` — deferred but planned for the next milestone.
@@ -96,6 +99,14 @@ local diagnostic, no networking            account and photo flows
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
+
+### 2026-07-13 — Prove backups with an isolated disposable stack
+
+**Decision:** Restore each protected snapshot into a uniquely named Docker Compose project with separate PostgreSQL and MinIO volumes, alternate loopback ports, and a temporary Museum config that addresses only the restored services. Validate database-to-object linkage and bucket-object checksums, start Museum, then remove the disposable resources.
+
+**Why:** Parsing a dump or checking archive hashes proves only that backup files are readable. An isolated service-level restore proves that PostgreSQL, object storage, and Museum can use the snapshot together without risking the live server.
+
+**Alternatives considered:** Restore into the live volumes, which could overwrite working data; validate only `pg_restore --list` and raw archive checksums, which cannot prove service startup; or retain a permanent standby stack, which adds secret-bearing infrastructure and drift for a personal deployment.
 
 ### 2026-07-13 — Keep the self-hosted target compatible with a Personal Team
 
@@ -348,6 +359,12 @@ _None._
 ## 7. Lessons learned
 
 > Populated at the end of each phase. Record surprises, anti-patterns, and improvements for the next phase.
+
+### Phase 4 — Prove backup recovery
+
+- MinIO rewrites usage caches and removes temporary trash beneath `.minio.sys` as soon as it starts. A post-start restore check should validate every user bucket object while treating MinIO's internal namespace as mutable operational state.
+- The authoritative current media linkage is `files` to `object_keys` to `object_copies`; the legacy `file_data` table can be empty even when uploaded photos and their object copies are present.
+- A Compose override with replacement ports and mounts makes the isolation boundary auditable before startup: the live project, temporary project, volumes, bind-mounted config, and loopback listeners all remain distinct.
 
 ### Phase 3 — Verify fail-closed behavior and real-device operation
 
