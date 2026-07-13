@@ -13,7 +13,7 @@
 | Phase | Task | Title | Size | Status | Notes |
 |------:|----:|-------|:----:|--------|-------|
 | 1 | 1.1 | Align the Android toolchain and build an unchanged debug APK | M | 🟢 done | Installed a checksum-verified ARM64 Temurin 17.0.19 JDK and isolated Android SDK outside Git, including API 36, Build Tools 36, Platform Tools 37, pinned NDK 28.2, and transitive compatibility components. Built the unchanged `independentDebug` APK with rustup first on `PATH`; verified package `io.ente.photos.independent.debug`, minimum API 26, target API 36, Android debug signing, ARMv7/ARM64 libraries, and SHA-256 `d34db3323e4c500bfdf44b392c136bbb27ebc156b7a7cc7afa812ec571f544bc`. |
-| 1 | 1.2 | Boot an emulator and preflight private Museum and MinIO HTTPS | S | ⚪ not started | Confirm a clean Android emulator can resolve and trust the private Tailscale hostname, reach Museum, and reach the MinIO endpoint used by signed object URLs. |
+| 1 | 1.2 | Boot an emulator and preflight private Museum and MinIO HTTPS | S | 🟢 done | Created and clean-booted the isolated `ente_api36_arm64` Pixel 7 AVD with Android 16/API 36 and Google APIs ARM64. From inside Android, resolved `macbook-pro-2.tailcfdac8.ts.net` to private address `100.100.190.42`; Android's trust store completed HTTPS to Museum `/ping` and MinIO `/minio/health/live`, both with HTTP 200 and TLS 1.3 `TLS_AES_128_GCM_SHA256`. Removed the temporary diagnostic and shut the emulator down cleanly while preserving the AVD. |
 | 2 | 2.1 | Add the self-hosted flavor and guarded Android build wrapper | M | ⚪ not started | Add a dedicated flavor with application ID `com.vanton1.ente.photos.selfhosted`. Reuse the shared Dart endpoint validator and have the wrapper inject the locked endpoint while rejecting caller overrides. Preserve every official Android flavor. |
 | 2 | 2.2 | Test the Android flavor, wrapper, endpoint lock, and APK identity | M | ⚪ not started | Exercise normal and locked Dart tests, wrapper rejection cases, Gradle variant assembly, manifest identity, and artifact inspection without weakening the official builds. |
 | 3 | 3.1 | Verify the locked Android build end to end in an emulator | M | ⚪ not started | Register or log in, upload and download encrypted media, force-restart the app, and prove a same-package artifact for a different valid HTTPS origin fails locally without Museum requests. |
@@ -85,6 +85,14 @@ V1 locks authenticated Museum traffic only, matching the iOS security boundary. 
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
 
+### 2026-07-13 — Preflight with an API 36 Google APIs ARM64 emulator
+
+**Decision:** Preserve a dedicated Pixel 7 AVD under the isolated Android toolchain and use a temporary D8-compiled Java diagnostic through Android's `app_process` to test private DNS, the platform trust store, Museum, and MinIO before changing application packaging.
+
+**Why:** The clean Android 16 image matches the build target and proved the device-side network path independently of Ente application code. Its shell does not include `curl`, `wget`, or `openssl`, so the temporary diagnostic exercised Android's actual HTTPS implementation without adding files or dependencies to the repository.
+
+**Alternatives considered:** Rely on host-only HTTPS checks, install extra software into the emulator, or postpone device networking until after the self-hosted flavor exists.
+
 ### 2026-07-13 — Install an isolated Android toolchain outside Git
 
 **Decision:** Keep the Android JDK and SDK under `/Users/vanton/projects/ente-android-toolchain`, reference the SDK through ignored local Gradle properties and command environment, and put the existing rustup shims before the broken Homebrew Rust installation during builds.
@@ -154,4 +162,6 @@ V1 locks authenticated Museum traffic only, matching the iOS security boundary. 
 
 > Populated at the end of each phase. Record surprises, anti-patterns, and improvements for the next phase.
 
-_Empty until Phase 1 completes._
+- Android builds require the isolated API-level toolchain plus rustup first on `PATH`; transitive Gradle plugins may install older SDK, NDK, build-tools, and CMake versions side by side with the pinned versions.
+- A clean Google APIs ARM64 emulator can resolve the host's private Tailscale DNS name, route to its Tailscale address, and trust its private HTTPS certificates without application-specific network-security exceptions.
+- Minimal Android system images do not necessarily include familiar HTTPS command-line clients. A temporary D8-compiled diagnostic run with `app_process` can exercise Android's trust store without changing the app or repository, and should be removed immediately afterward.
