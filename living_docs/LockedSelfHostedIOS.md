@@ -17,7 +17,7 @@
 | 1 | 1.3 | Install and verify a local Ente quickstart cluster | S | 🟢 done | Installed the official Docker quickstart outside Git at `/Users/vanton/projects/my-ente`. Verified healthy Museum and PostgreSQL containers, Museum `/ping`, MinIO health, and HTTP 200 responses from the Photos and Albums web applications; restricted generated configuration files and all published HTTP ports to the local Mac. |
 | 1 | 1.4 | Expose Museum and MinIO through private Tailscale HTTPS | M | 🟢 done | Reused the installed and authenticated Tailscale client, enabled private Serve routes for Museum on HTTPS port 443 and MinIO on HTTPS port 8443, and changed Museum to generate HTTPS object-storage URLs. Verified both TLS routes and Museum-to-MinIO reachability. |
 | 1 | 1.5 | Preflight Museum and object-storage reachability | S | 🟢 done | From an iOS 26.5 Simulator, verified Apple-trusted HTTPS, Museum `/ping`, MinIO health, and a short-lived signed object download through the private hostname. Confirmed quickstart companion-app URLs remain local and unpublished under the core-only scope. |
-| 2 | 2.1 | Add and unit-test the fail-closed endpoint policy | M | ⚪ not started | Cover locked and normal builds, endpoint-state binding, background startup, and authenticated request-origin enforcement. |
+| 2 | 2.1 | Add and unit-test the fail-closed endpoint policy | M | 🟢 done | Added compile-time endpoint validation, persistent endpoint binding, foreground/background startup gates, locked mutation rejection, authenticated same-origin enforcement, and a local recovery screen. Verified 18 focused tests under normal and locked defines, all 262 Photos tests, and a clean analyzer run. |
 | 2 | 2.2 | Disable endpoint editing and add the locked-build command | S | ⚪ not started | Preserve the read-only endpoint indicator and document every required build input. |
 | 2 | 2.3 | Add the core-only self-hosted iOS target and signing configuration | M | ⚪ not started | Use a unique personal bundle ID and development-safe entitlements without the production extension suite. |
 | 3 | 3.1 | Verify the locked build end to end in the simulator | M | ⚪ not started | Exercise registration or login, sync, upload, download, restart persistence, and negative configuration cases. |
@@ -46,7 +46,7 @@ In a normal build, endpoint behavior remains unchanged. In a locked build:
 - Foreground and background entrypoints validate the policy before creating any network client.
 - The compiled endpoint takes precedence over preferences, runtime endpoint mutation is rejected, and the seven-tap editor is inert. The existing custom-endpoint label remains as a read-only indicator.
 - The app stores an endpoint-identity binding on a clean first launch. Existing account/endpoint state or a different binding fails closed with local reset instructions; the app never silently erases local data.
-- Authenticated Museum requests must remain on the compiled origin and must not follow cross-origin redirects. Presigned object-storage requests remain allowed because Museum intentionally sends those through the non-Museum download/upload clients.
+- Authenticated Museum requests must remain on the compiled origin and do not follow redirects in the locked build. Presigned object-storage requests remain allowed because Museum intentionally sends those through the non-Museum download/upload clients.
 - Invalid foreground startup renders a local diagnostic view without initializing networking. Invalid background startup records a local error and returns without networking.
 
 The supported build path uses a wrapper that validates `ENTE_SELF_HOSTED_ENDPOINT` and supplies `lockedEndpoint=true` plus the endpoint define. A core-only `SelfHostedRunner` target and shared `selfhosted` scheme use a unique personal bundle ID, a local Apple development-team setting, and development-safe entitlements. They do not depend on or embed the production Share Extension and widgets. The official Runner target stays unchanged.
@@ -94,6 +94,22 @@ local diagnostic, no networking            account and photo flows
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
+
+### 2026-07-13 — Disable redirects for locked authenticated Museum requests
+
+**Decision:** Require the final authenticated request URI to match the compiled Museum scheme, host, and effective port, then disable automatic redirects for that request in locked builds. Leave normal builds and unauthenticated or object-storage clients unchanged.
+
+**Why:** Validating before dispatch prevents direct cross-origin requests, while disabling redirects ensures an authenticated request cannot be forwarded after that check. Museum API calls do not require redirects, so rejecting all of them is a small and auditable security boundary.
+
+**Alternatives considered:** Follow same-origin redirects or inspect each redirect target dynamically. Dio's request interceptor runs before the HTTP adapter follows redirects, so either option would require a more invasive redirect handler for no V1 API requirement.
+
+### 2026-07-13 — Persist the locked endpoint identity across logout
+
+**Decision:** On the first clean locked launch, store a canonical endpoint binding in preferences. Preserve only that binding when logging out, reject runtime endpoint preference state, and reject account state that predates a matching binding.
+
+**Why:** A stable binding makes the server identity explicit for the installation and prevents account state from one artifact or endpoint being silently reused with another. Preserving it through logout keeps subsequent accounts on the same compiled server without weakening the normal build's existing preference-clearing behavior.
+
+**Alternatives considered:** Derive identity solely from the current compile-time define, overwrite a binding on every launch, or clear it during logout. Those choices cannot distinguish unsafe pre-existing state, silently accept an artifact switch, or unnecessarily discard the installation identity.
 
 ### 2026-07-13 — Switch Museum's quickstart buckets to the private HTTPS endpoint
 
