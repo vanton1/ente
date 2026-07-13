@@ -16,7 +16,7 @@
 | 1 | 1.2 | Produce an unchanged Photos build for an iOS simulator | S | 🟢 done | Built and signature-verified the unchanged `io.ente.frame.debug` app at `mobile/apps/photos/build/ios/Debug-iphonesimulator/Runner.app` for the arm64 iOS Simulator. Recorded the clean-checkout generation and machine setup prerequisites below. |
 | 1 | 1.3 | Install and verify a local Ente quickstart cluster | S | 🟢 done | Installed the official Docker quickstart outside Git at `/Users/vanton/projects/my-ente`. Verified healthy Museum and PostgreSQL containers, Museum `/ping`, MinIO health, and HTTP 200 responses from the Photos and Albums web applications; restricted generated configuration files and all published HTTP ports to the local Mac. |
 | 1 | 1.4 | Expose Museum and MinIO through private Tailscale HTTPS | M | 🟢 done | Reused the installed and authenticated Tailscale client, enabled private Serve routes for Museum on HTTPS port 443 and MinIO on HTTPS port 8443, and changed Museum to generate HTTPS object-storage URLs. Verified both TLS routes and Museum-to-MinIO reachability. |
-| 1 | 1.5 | Preflight Museum and object-storage reachability | S | ⚪ not started | Verify `/ping`, server-provided application URLs, and client-reachable object storage through the chosen HTTPS hostname. |
+| 1 | 1.5 | Preflight Museum and object-storage reachability | S | 🟢 done | From an iOS 26.5 Simulator, verified Apple-trusted HTTPS, Museum `/ping`, MinIO health, and a short-lived signed object download through the private hostname. Confirmed quickstart companion-app URLs remain local and unpublished under the core-only scope. |
 | 2 | 2.1 | Add and unit-test the fail-closed endpoint policy | M | ⚪ not started | Cover locked and normal builds, endpoint-state binding, background startup, and authenticated request-origin enforcement. |
 | 2 | 2.2 | Disable endpoint editing and add the locked-build command | S | ⚪ not started | Preserve the read-only endpoint indicator and document every required build input. |
 | 2 | 2.3 | Add the core-only self-hosted iOS target and signing configuration | M | ⚪ not started | Use a unique personal bundle ID and development-safe entitlements without the production extension suite. |
@@ -82,6 +82,7 @@ local diagnostic, no networking            account and photo flows
 | Ad hoc, TestFlight, or App Store distribution | Out of scope | V1 uses personal development signing only. |
 | Runtime server switching in the locked artifact | Out of scope | Immutability is the purpose of the locked build; changing servers requires rebuilding and clearing the installation. |
 | Generic self-hosted build support for all contributors and mobile apps | Out of scope | V1 targets one personal Ente Photos iOS workflow rather than an upstream-wide flavor system. |
+| Remote access to Photos companion web applications | Out of scope | V1 publishes only Museum and object storage to the private tailnet; public Albums, Cast, Accounts, and other web applications remain local or use the upstream ancillary defaults allowed by the Museum-only policy. |
 | Separate architecture companion document | Out of scope | The endpoint policy and packaging path are compact enough to document here and in the build runbook. |
 
 **Status values:**
@@ -274,7 +275,6 @@ local diagnostic, no networking            account and photo flows
 
 ## 6. Open questions
 
-- What trusted HTTPS Museum origin will be supplied as `ENTE_SELF_HOSTED_ENDPOINT` for Tasks 1.3 and later?
 - What Apple development-team identifier and unique bundle identifier will be used for Task 2.3?
 
 ---
@@ -283,4 +283,8 @@ local diagnostic, no networking            account and photo flows
 
 > Populated at the end of each phase. Record surprises, anti-patterns, and improvements for the next phase.
 
-_Empty until first phase completes._
+### Phase 1 — Establish a buildable client and reachable private server
+
+- A health check alone is not enough for Ente: the preflight must exercise a signed object transfer because Museum embeds the storage origin in upload and download URLs.
+- The stock quickstart's all-interface port bindings and `localhost` storage endpoint are suitable only for same-host evaluation. A phone-capable private deployment needs explicit loopback bindings plus a shared HTTPS storage origin.
+- The unchanged iOS baseline exposed machine and generated-source prerequisites before endpoint work began, keeping Flutter, Rust, CocoaPods, Rive, Xcode, and Simulator failures out of the policy implementation.
