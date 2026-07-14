@@ -229,7 +229,10 @@ email-without-token login state, and an in-place Android emulator upgrade that
 retained account state. End-to-end iOS acceptance then used a certificate-valid
 local HTTPS origin to complete the guarded switch, sign in, download the remote
 library, upload a unique encrypted fixture, and cold-restart with both the
-account and selected binding intact.
+account and selected binding intact. The arm64 Release target was subsequently
+signed with the owner's Personal Team, audited for its compiled endpoint,
+application identifier, and entitlements, installed on a physical iPhone 16,
+and launched under the separate self-hosted bundle identifier.
 
 When changing this area, preserve these invariants:
 

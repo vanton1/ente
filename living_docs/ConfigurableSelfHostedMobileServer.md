@@ -19,6 +19,7 @@
 | 3 | 3.1 | Document the as-built mobile endpoint architecture | S | 🟢 done | Added and linked the as-built architecture companion covering guarantees, component ownership, mode and persisted-state rules, fail-closed startup, network boundaries, the validated logout-before-switch sequence and failure states, packaging and rollback, verification evidence, and a maintenance checklist. Audited the description against the shipped implementation, resolved all 17 local document and source links, and passed heading-structure and `git diff --check` validation. |
 | 4 | 4.1 | Recover server switching after an incomplete login | M | 🟢 done | Exposed one endpoint-level detector for complete or partial local account state and made the Server page require confirmed local cleanup whenever that state exists, including an email saved before a failed passkey login. Reproduced the email-without-token failure, recovered the dedicated simulator without deleting its binding, rebuilt and installed the configurable iOS artifact, and verified that switching logs out locally and continues at the new server's login flow. Passed 39 focused tests in each of standard, locked, and configurable modes, all 294 Photos tests, the focused analyzer, the embedded-kernel and signature audit, and `git diff --check`. |
 | 4 | 4.2 | Verify a successful iOS server switch and restart | S | 🟢 done | Completed the guarded switch to a certificate-valid MagicDNS HTTPS origin on the dedicated iOS 26.5 simulator, signed in to the local account, and confirmed the remote library downloaded. Imported an 11 KB non-personal Ducky marker; runtime logs recorded both encrypted-object uploads, 1/1 files completed, and sync completion. After a cold application restart, the signed-in gallery and marker remained visible, the local account keys remained present, and `locked_endpoint_binding_v1` still held the selected origin. |
+| 5 | 5.1 | Build and install the configurable iOS app on a physical iPhone | M | 🟢 done | Registered the paired iPhone 16 running iOS 26.5.2, mounted developer services, and used the active Personal Team profile and matching development certificate to build the arm64 Release target. Audited the compiled local HTTPS hostname, `48PBF3Q63G.com.vanton1.ente.photos.selfhosted` application identifier, signature entitlements, and separate bundle identity; iOS accepted and installed the app, launched it successfully, and kept the `SelfHostedRunner` process running. The Personal Team profile expires on 2026-07-20 and will require a signed rebuild and reinstall. |
 
 **Legend:** ⚪ not started · 🟡 working · 🟢 done · 🔴 blocked / needs decision
 **Size:** XS · S · M · L · XL (never days or weeks).
@@ -380,3 +381,17 @@ _None._
   local account populated the empty gallery, and a small unique fixture then
   produced one encrypted upload whose completion could be correlated between
   the gallery and runtime logs.
+
+### Phase 5 — Physical iPhone installation
+
+- The parenthesized code in an Apple Development certificate's display name is
+  not necessarily the signing Team ID. The certificate subject `OU` and the
+  provisioning profile's `TeamIdentifier` both identified the active Personal
+  Team as `48PBF3Q63G`.
+- Xcode inherited `/usr/local/bin` before `~/.cargo/bin`, which let an obsolete
+  Homebrew Rust compiler load an incompatible LLVM library. Prepending the
+  rustup proxy directory fixed the native iOS build without changing the
+  repository or global toolchain configuration.
+- An unlocked device is required while Xcode mounts developer services. Free
+  Personal Team provisioning is short-lived, so the owner must rebuild and
+  reinstall before the embedded profile expires.

@@ -177,7 +177,12 @@ Run iOS commands from the Photos application directory:
 ```sh
 cd "$(git rev-parse --show-toplevel)/mobile/apps/photos"
 export ENTE_SELF_HOSTED_ENDPOINT="https://photos.example.com"
+export PATH="$HOME/.cargo/bin:$PATH"
 ```
+
+Keep rustup's proxy directory before Homebrew paths. The native Rust build can
+otherwise select a different `rustc` than the `cargo` toolchain selected by
+Cargokit.
 
 ### iOS Simulator
 
@@ -205,7 +210,16 @@ xcrun simctl launch booted com.vanton1.ente.photos.selfhosted
 ### Signed physical-iPhone build
 
 First sign in to an Apple ID in Xcode and make sure an Apple Development
-certificate is available. Find the phone identifier with:
+certificate is available. The signing Team ID is the certificate subject's
+`OU`; the code in parentheses in Xcode's certificate label can instead identify
+the developer. Inspect the subject when necessary:
+
+```sh
+security find-certificate -c "Apple Development" -p |
+  openssl x509 -noout -subject
+```
+
+Find the phone identifier with:
 
 ```sh
 xcrun xcdevice list
@@ -248,7 +262,14 @@ Xcode, it can also be installed from the command line:
 xcrun devicectl device install app \
   --device "$ENTE_IOS_DEVICE_ID" \
   build/ios/Debug-selfhosted-iphoneos/SelfHostedRunner.app
+xcrun devicectl device process launch \
+  --device "$ENTE_IOS_DEVICE_ID" \
+  com.vanton1.ente.photos.selfhosted
 ```
+
+An unpaid Personal Team produces a short-lived provisioning profile. Rebuild
+and reinstall the application when that profile expires; signing through a
+separate self-hosted bundle identifier does not replace the official Ente app.
 
 Use `--no-codesign` only when a non-installable device artifact is explicitly
 needed for later signing.
