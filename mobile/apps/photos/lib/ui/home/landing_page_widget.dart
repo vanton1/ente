@@ -22,6 +22,7 @@ import 'package:photos/ui/payment/subscription.dart';
 import "package:photos/ui/settings/developer_settings_tap_area.dart";
 import "package:photos/ui/settings/developer_settings_widget.dart";
 import "package:photos/ui/settings/language_picker.dart";
+import "package:photos/ui/settings/server/server_settings_page.dart";
 import "package:rive/rive.dart" as rive;
 
 class LandingPageWidget extends StatefulWidget {
@@ -162,6 +163,9 @@ class _LandingPageWidgetState extends State<LandingPageWidget> {
                             color: Colors.white,
                           ),
                         ),
+                      ),
+                      const ConfigurableServerLink(
+                        foregroundColor: Colors.white,
                       ),
                       const DeveloperSettingsWidget(),
                     ],

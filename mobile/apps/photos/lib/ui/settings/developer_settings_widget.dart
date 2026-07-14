@@ -7,6 +7,9 @@ class DeveloperSettingsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (endpointConfig.isConfigurable) {
+      return const SizedBox.shrink();
+    }
     if (!endpointConfig.isProduction) {
       final endpoint = endpointConfig.endpoint;
       final endpointURI = Uri.parse(endpoint);

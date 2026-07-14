@@ -34,6 +34,7 @@ import "package:photos/ui/settings/ml/machine_learning_settings_page.dart";
 import "package:photos/ui/settings/notification_settings_screen.dart";
 import "package:photos/ui/settings/search/settings_search_page.dart";
 import "package:photos/ui/settings/security/security_settings_page.dart";
+import "package:photos/ui/settings/server/server_settings_page.dart";
 import "package:photos/ui/settings/storage_card_widget.dart";
 import "package:photos/ui/settings/streaming/video_streaming_settings_page.dart";
 import "package:photos/ui/settings/support/help_support_page.dart";
@@ -114,6 +115,17 @@ class _SettingsBody extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 8),
+              if (endpointConfig.isConfigurable) ...[
+                _buildMenuItem(
+                  title: AppLocalizations.of(context).serverEndpoint,
+                  subtitle: endpointConfig.endpoint,
+                  icon: HugeIcons.strokeRoundedDatabase,
+                  onTap: () async {
+                    await routeToPage(context, const ServerSettingsPage());
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
               _buildMenuItem(
                 title: AppLocalizations.of(context).backup,
                 icon: HugeIcons.strokeRoundedCloudUpload,

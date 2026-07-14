@@ -11,6 +11,7 @@ import 'package:photos/services/account/user_service.dart';
 import "package:photos/ui/account/login_page.dart";
 import 'package:photos/ui/common/web_page.dart';
 import "package:photos/ui/settings/developer_settings_tap_area.dart";
+import "package:photos/ui/settings/server/server_settings_page.dart";
 import "package:styled_text/styled_text.dart";
 
 class EmailEntryPage extends StatefulWidget {
@@ -272,6 +273,11 @@ class _EmailEntryPageState extends State<EmailEntryPage> {
                   ],
                   const SizedBox(height: 16),
                   _getTOSAgreement(),
+                  const SizedBox(height: 8),
+                  const Align(
+                    alignment: Alignment.center,
+                    child: ConfigurableServerLink(),
+                  ),
                 ],
               ),
             ),

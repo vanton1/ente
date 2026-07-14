@@ -13,6 +13,7 @@ import 'package:photos/services/account/user_service.dart';
 import "package:photos/ui/account/email_entry_page.dart";
 import "package:photos/ui/account/login_pwd_verification_page.dart";
 import "package:photos/ui/settings/developer_settings_tap_area.dart";
+import "package:photos/ui/settings/server/server_settings_page.dart";
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -125,6 +126,8 @@ class _LoginPageState extends State<LoginPage> {
                   : TextInputComponentMessageType.helper,
             ),
             const SizedBox(height: 24),
+            const Center(child: ConfigurableServerLink()),
+            const SizedBox(height: 8),
             const Expanded(child: DeveloperSettingsTapArea()),
           ],
         ),

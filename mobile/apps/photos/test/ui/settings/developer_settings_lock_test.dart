@@ -7,6 +7,7 @@ import "package:photos/generated/l10n.dart";
 import "package:photos/service_locator.dart";
 import "package:photos/ui/settings/developer_settings_tap_area.dart";
 import "package:photos/ui/settings/developer_settings_widget.dart";
+import "package:photos/ui/settings/server/server_settings_page.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
 void main() {
@@ -41,17 +42,22 @@ void main() {
       of: find.byKey(tapAreaKey),
       matching: find.byType(GestureDetector),
     );
-    expect(detector, kLockedEndpoint ? findsNothing : findsOneWidget);
+    expect(
+      detector,
+      EndpointPolicy.current.hasPersistentBinding
+          ? findsNothing
+          : findsOneWidget,
+    );
   });
 
   testWidgets("the self-hosted endpoint remains visible as read-only text", (
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: const Scaffold(body: DeveloperSettingsWidget()),
+        home: Scaffold(body: DeveloperSettingsWidget()),
       ),
     );
     await tester.pumpAndSettle();
@@ -62,5 +68,23 @@ void main() {
       kLockedEndpoint ? findsOneWidget : findsNothing,
     );
     expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets("the production server link follows configurable mode", (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: ConfigurableServerLink()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey("configurableServerLink")),
+      kConfigurableEndpoint ? findsOneWidget : findsNothing,
+    );
   });
 }

@@ -14,7 +14,7 @@
 |------:|----:|-------|:----:|--------|-------|
 | 1 | 1.1 | Add configurable endpoint policy and migrate locked installations | M | 🟢 done | Added explicit standard, locked, and configurable modes with conflicting-define rejection. Configurable mode reuses valid locked bindings, accepts any canonical HTTPS origin, preserves its binding across logout, and enforces authenticated same-origin requests without enabling direct mutation. Passed the 29 focused tests under standard, locked, and configurable defines, all 275 Photos tests, the full analyzer, and the locked command-line validator. |
 | 1 | 1.2 | Validate candidate servers and switch only after local logout | M | 🟢 done | Added a fresh credential-free, no-redirect Museum `/ping` probe with 15-second connection and response timeouts, an opaque validated-candidate handoff, and configurable-only activation that retains the old binding until local account preferences are cleared. Failed probes and premature activation leave account state and the binding untouched; successful activation emits the endpoint-update event. Passed all 37 focused endpoint tests, all 283 Photos tests, and the full analyzer. |
-| 2 | 2.1 | Add guarded server controls to Settings and sign-in | M | ⚪ not started | Show the active origin in authenticated Settings and logged-out entry screens, require destructive confirmation while signed in, and return successful changes to sign-in. |
+| 2 | 2.1 | Add guarded server controls to Settings and sign-in | M | 🟢 done | Added one localized Server Settings page, an authenticated Settings row, and current-origin links on landing, account creation, and login. The page validates before mutation, treats the active origin as a no-op, requires a scrollable signed-in confirmation naming both origins, runs local logout before activation, and returns successful changes to login. Standard and locked builds hide the control; both managed modes disable the legacy seven-tap editor. Passed 19 focused UI/network tests, compile-mode checks under standard, configurable, and locked defines, all 292 Photos tests, and the full analyzer. |
 | 2 | 2.2 | Build, document, and verify configurable Android and iOS artifacts | M | ⚪ not started | Update both guarded wrappers, revise the build guide and earlier living docs without rewriting their history, audit both artifacts, and exercise the shared flow on the iOS simulator and resource-capped Android emulator. |
 | 3 | 3.1 | Document the as-built mobile endpoint architecture | S | ⚪ not started | Write the settled component, state, and switch-flow explanation after implementation, then link it from this document. |
 
@@ -88,7 +88,7 @@ The endpoint layer exposes a dedicated configurable-mode activation operation th
 
 ### User surface, diagnostics, and constraints
 
-Configurable builds show a Server row near Account in authenticated Settings and a visible current-server link on the landing, email-entry, and login screens. Both routes open the same Server Settings page. Standard and locked builds do not show this production control, and the hidden developer page's `offline` and `online` commands are not reused.
+Configurable builds show a Server row near Account in authenticated Settings and a visible current-server link on the landing, email-entry, and login screens. Both routes open the same Server Settings page. Standard and locked builds do not show this production control, and the hidden developer page's `offline` and `online` commands are not reused. Both managed modes disable the seven-tap developer editor entirely; standard builds retain it.
 
 The signed-in confirmation names both origins and warns that backup and uploads stop and local account state and queued work are cleared. Validation, cleanup, and persistence failures use actionable local messages. Structured device logs and Museum logs are the diagnostic boundary; this personal sideloaded application adds no remote telemetry or alert service. No new regulatory or contractual compliance obligation is introduced.
 
@@ -123,6 +123,22 @@ Rollback is straightforward before a successful switch: revert a task or reinsta
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. Never delete an entry; if a decision changes, add a newer entry explaining the reversal.
+
+### 2026-07-14 — Disable the legacy endpoint editor in managed builds
+
+**Decision:** Remove the seven-tap developer-settings entry from locked and configurable modes while retaining it unchanged in standard builds. Configurable builds use only the guarded Server Settings page, and their old read-only developer endpoint label is replaced by the visible current-server link.
+
+**Why:** The developer page accepts special `offline` and `online` commands and was designed for direct standard-mode mutation. Leaving it reachable in configurable mode creates a second, misleading route that cannot satisfy the required validation, confirmation, and logout sequence.
+
+**Alternatives considered:** Leave the editor reachable and rely on the endpoint policy to reject writes, which presents a broken control; or retrofit the developer page, which would mix personal production behavior with unrelated debugging commands.
+
+### 2026-07-14 — Route every configurable entry through one Server Settings page
+
+**Decision:** Use one localized Server Settings page from the authenticated Settings row and reusable current-origin links on landing, account creation, and login. The page owns the isolated probe, uses a scrollable destructive confirmation only when signed in, calls the existing local logout lifecycle, activates the validated origin, and returns to login.
+
+**Why:** One page keeps validation, failure messaging, cancellation, cleanup order, and navigation consistent while leaving recovery reachable without an account. Dependency injection at the page boundary permits widget tests without weakening the opaque validated-endpoint handoff.
+
+**Alternatives considered:** Build separate authenticated and logged-out forms, which duplicates the highest-risk transition logic; or expose the control only in Settings, which becomes inaccessible after logout or an unavailable-server failure.
 
 ### 2026-07-14 — Activate only an opaque validated candidate
 

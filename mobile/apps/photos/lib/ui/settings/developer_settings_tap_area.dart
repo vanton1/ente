@@ -29,7 +29,7 @@ class _DeveloperSettingsTapAreaState extends State<DeveloperSettingsTapArea> {
 
   @override
   Widget build(BuildContext context) {
-    if (kLockedEndpoint) {
+    if (EndpointPolicy.current.hasPersistentBinding) {
       return widget.child;
     }
     return GestureDetector(
