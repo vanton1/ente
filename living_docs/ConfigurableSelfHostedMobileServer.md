@@ -4,7 +4,7 @@
 **Started:** 2026-07-14
 **Owner:** vanton
 **Planning doc:** n/a
-**Companion docs:** `living_docs/LockedSelfHostedIOS.md`, `living_docs/LockedSelfHostedAndroid.md`, `living_docs/ConfigurableSelfHostedMobileServerArchitecture.md` (planned), `mobile/apps/photos/SELF_HOSTED_BUILD_GUIDE.md`, `docs/docs/self-hosting/administration/reverse-proxy.md`, `docs/docs/self-hosting/administration/object-storage.md`
+**Companion docs:** `living_docs/LockedSelfHostedIOS.md`, `living_docs/LockedSelfHostedAndroid.md`, `living_docs/ConfigurableSelfHostedMobileServerArchitecture.md`, `mobile/apps/photos/SELF_HOSTED_BUILD_GUIDE.md`, `docs/docs/self-hosting/administration/reverse-proxy.md`, `docs/docs/self-hosting/administration/object-storage.md`
 
 ---
 
@@ -16,7 +16,7 @@
 | 1 | 1.2 | Validate candidate servers and switch only after local logout | M | 🟢 done | Added a fresh credential-free, no-redirect Museum `/ping` probe with 15-second connection and response timeouts, an opaque validated-candidate handoff, and configurable-only activation that retains the old binding until local account preferences are cleared. Failed probes and premature activation leave account state and the binding untouched; successful activation emits the endpoint-update event. Passed all 37 focused endpoint tests, all 283 Photos tests, and the full analyzer. |
 | 2 | 2.1 | Add guarded server controls to Settings and sign-in | M | 🟢 done | Added one localized Server Settings page, an authenticated Settings row, and current-origin links on landing, account creation, and login. The page validates before mutation, treats the active origin as a no-op, requires a scrollable signed-in confirmation naming both origins, runs local logout before activation, and returns successful changes to login. Standard and locked builds hide the control; both managed modes disable the legacy seven-tap editor. Passed 19 focused UI/network tests, compile-mode checks under standard, configurable, and locked defines, all 292 Photos tests, and the full analyzer. |
 | 2 | 2.2 | Build, document, and verify configurable Android and iOS artifacts | M | 🟢 done | Changed both guarded wrappers and their shared validator to configurable mode, documented defaults, upgrades, switching, and rollback, and appended supersession notes to both locked-build records. Built and audited the arm64 iOS Simulator app and three-ABI Android debug APK. The iOS upgrade retained the local binding, exposed the signed-out Server link, and rejected the TLS-invalid Tailscale IP without switching. The resource-capped Android upgrade preserved its first-install record, signed-in session, photos, and local binding, and exposed the active Server page. The Android APK SHA-256 is `5d4613889a5fb8b72cd83f13e2aab50c3f7a9347589ff16a79584d9a6150e1aa`. Passed 45 configurable-define tests, all 292 Photos tests, the analyzer, wrapper guards, endpoint validation, signature/archive/identity audits, and `git diff --check`. |
-| 3 | 3.1 | Document the as-built mobile endpoint architecture | S | ⚪ not started | Write the settled component, state, and switch-flow explanation after implementation, then link it from this document. |
+| 3 | 3.1 | Document the as-built mobile endpoint architecture | S | 🟢 done | Added and linked the as-built architecture companion covering guarantees, component ownership, mode and persisted-state rules, fail-closed startup, network boundaries, the validated logout-before-switch sequence and failure states, packaging and rollback, verification evidence, and a maintenance checklist. Audited the description against the shipped implementation, resolved all 17 local document and source links, and passed heading-structure and `git diff --check` validation. |
 
 **Legend:** ⚪ not started · 🟡 working · 🟢 done · 🔴 blocked / needs decision
 **Size:** XS · S · M · L · XL (never days or weeks).
@@ -36,6 +36,10 @@ The observable success metric is one successful in-place locked-to-configurable 
 ---
 
 ## 3. Architecture / approach
+
+The settled implementation and maintenance invariants are documented in the
+[as-built architecture companion](ConfigurableSelfHostedMobileServerArchitecture.md).
+This section preserves the approach and boundaries selected during design.
 
 The current application has normal and compile-time locked endpoint behavior. V1 extends that shared Dart implementation with three explicit modes rather than creating another application module:
 
@@ -329,3 +333,15 @@ _None._
 - The Android image enforces roughly 2.5 GiB of guest RAM even when launched with
   a 2 GiB request. Two cores, host graphics, no audio or boot animation, and
   disabled snapshots kept the host responsive during the preserved-state test.
+
+### Phase 3 — As-built handoff
+
+- Describing the isolated candidate probe separately from authenticated Museum
+  traffic makes the credential and redirect boundaries easier to review than a
+  single generic networking diagram.
+- Configurable startup detects account state through an explicit preference-key
+  list. Future shared-preferences account keys must extend that list so a
+  missing binding continues to fail closed and activation remains post-logout.
+- The companion's maintenance checklist now holds the cross-component
+  invariants that would be easy to miss when changing only a wrapper, UI page,
+  interceptor, or logout implementation.
