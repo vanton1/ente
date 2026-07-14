@@ -50,6 +50,58 @@ class EndpointConfig {
     Bus.instance.fire(EndpointUpdatedEvent(this.endpoint));
   }
 
+  Future<bool> activateConfigurableEndpointAfterLocalLogout(
+    String endpoint,
+  ) async {
+    policy.validateModeConfiguration();
+    if (!isConfigurable) {
+      throw const EndpointPolicyException(
+        EndpointPolicyFailureReason.runtimeMutationNotAllowed,
+        "Guarded endpoint activation is available only in configurable builds.",
+      );
+    }
+    if (_accountStateKeys.any(_preferences.containsKey)) {
+      throw const EndpointPolicyException(
+        EndpointPolicyFailureReason.accountStateNotCleared,
+        "Account state is still present; the server binding was not changed.",
+      );
+    }
+    if (_preferences.containsKey(preferencesKey)) {
+      throw const EndpointPolicyException(
+        EndpointPolicyFailureReason.existingEndpointState,
+        "A managed build cannot change servers while a runtime override exists.",
+      );
+    }
+
+    final currentBinding = _preferences.getString(bindingKey);
+    if (currentBinding == null) {
+      throw const EndpointPolicyException(
+        EndpointPolicyFailureReason.endpointBindingMismatch,
+        "The active server binding is missing.",
+      );
+    }
+    try {
+      if (policy.validateConfigurableEndpoint(currentBinding) !=
+          currentBinding) {
+        throw const FormatException();
+      }
+    } on Object {
+      throw const EndpointPolicyException(
+        EndpointPolicyFailureReason.endpointBindingMismatch,
+        "The active server binding is invalid.",
+      );
+    }
+
+    final canonicalEndpoint = policy.validateConfigurableEndpoint(endpoint);
+    if (currentBinding == canonicalEndpoint) {
+      return false;
+    }
+
+    await _writeBinding(canonicalEndpoint);
+    Bus.instance.fire(EndpointUpdatedEvent(canonicalEndpoint));
+    return true;
+  }
+
   Future<void> validateForStartup() async {
     policy.validateModeConfiguration();
     if (!policy.hasPersistentBinding) {

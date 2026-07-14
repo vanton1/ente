@@ -16,6 +16,7 @@ enum EndpointPolicyFailureReason {
   productionEndpointNotAllowed,
   existingEndpointState,
   existingAccountState,
+  accountStateNotCleared,
   endpointBindingMismatch,
   endpointBindingWriteFailed,
   runtimeMutationNotAllowed,
@@ -41,6 +42,8 @@ class EndpointPolicyException implements Exception {
       EndpointPolicyFailureReason.existingAccountState ||
       EndpointPolicyFailureReason.endpointBindingMismatch =>
         "Clear this app's data or reinstall it before trying again.",
+      EndpointPolicyFailureReason.accountStateNotCleared =>
+        "Complete local logout before changing the server.",
       EndpointPolicyFailureReason.endpointBindingWriteFailed =>
         "Restart the app. If the problem continues, reinstall it.",
       EndpointPolicyFailureReason.runtimeMutationNotAllowed ||

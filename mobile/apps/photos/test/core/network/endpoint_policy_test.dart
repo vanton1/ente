@@ -35,7 +35,7 @@ void main() {
       return;
     }
 
-    final expectedMode = kLockedEndpoint
+    const expectedMode = kLockedEndpoint
         ? EndpointMode.locked
         : kConfigurableEndpoint
         ? EndpointMode.configurable

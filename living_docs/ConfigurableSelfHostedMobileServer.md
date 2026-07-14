@@ -13,7 +13,7 @@
 | Phase | Task | Title | Size | Status | Notes |
 |------:|----:|-------|:----:|--------|-------|
 | 1 | 1.1 | Add configurable endpoint policy and migrate locked installations | M | 🟢 done | Added explicit standard, locked, and configurable modes with conflicting-define rejection. Configurable mode reuses valid locked bindings, accepts any canonical HTTPS origin, preserves its binding across logout, and enforces authenticated same-origin requests without enabling direct mutation. Passed the 29 focused tests under standard, locked, and configurable defines, all 275 Photos tests, the full analyzer, and the locked command-line validator. |
-| 1 | 1.2 | Validate candidate servers and switch only after local logout | M | ⚪ not started | Probe Museum without credentials or redirects, leave the account untouched on failure, and expose a guarded endpoint-change operation that can run only after account state is cleared. |
+| 1 | 1.2 | Validate candidate servers and switch only after local logout | M | 🟢 done | Added a fresh credential-free, no-redirect Museum `/ping` probe with 15-second connection and response timeouts, an opaque validated-candidate handoff, and configurable-only activation that retains the old binding until local account preferences are cleared. Failed probes and premature activation leave account state and the binding untouched; successful activation emits the endpoint-update event. Passed all 37 focused endpoint tests, all 283 Photos tests, and the full analyzer. |
 | 2 | 2.1 | Add guarded server controls to Settings and sign-in | M | ⚪ not started | Show the active origin in authenticated Settings and logged-out entry screens, require destructive confirmation while signed in, and return successful changes to sign-in. |
 | 2 | 2.2 | Build, document, and verify configurable Android and iOS artifacts | M | ⚪ not started | Update both guarded wrappers, revise the build guide and earlier living docs without rewriting their history, audit both artifacts, and exercise the shared flow on the iOS simulator and resource-capped Android emulator. |
 | 3 | 3.1 | Document the as-built mobile endpoint architecture | S | ⚪ not started | Write the settled component, state, and switch-flow explanation after implementation, then link it from this document. |
@@ -123,6 +123,22 @@ Rollback is straightforward before a successful switch: revert a task or reinsta
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. Never delete an entry; if a decision changes, add a newer entry explaining the reversal.
+
+### 2026-07-14 — Activate only an opaque validated candidate
+
+**Decision:** Return a library-constructed `ValidatedEndpoint` from the isolated `/ping` probe and require that value for the high-level switch operation instead of accepting another raw string at the call site.
+
+**Why:** The upcoming interface cannot accidentally skip canonicalization and reachability checks between validation and activation. The probe remains separately testable through an injected transport adapter without sharing the application's authenticated network client.
+
+**Alternatives considered:** Pass a canonical string between the interface and endpoint configuration, which makes validation easier to bypass; or let the endpoint configuration perform network I/O, which couples persistence to transport behavior and makes failure-state testing less focused.
+
+### 2026-07-14 — Keep the old binding until local logout completes
+
+**Decision:** Reject configurable endpoint activation while known account preferences or a legacy runtime override remain, require a valid current binding, and write the replacement only after local logout has cleared preferences. A same-origin activation is an event-free no-op.
+
+**Why:** Validation failure and interrupted cleanup cannot mix an old account with a new server. If the final binding write fails, the application remains logged out but still points safely at the old server.
+
+**Alternatives considered:** Write the candidate before logout, which exposes old credentials and local state to a new origin after interruption; or clear the binding during logout and restore it later, which introduces an avoidable invalid-state window.
 
 ### 2026-07-14 — Model endpoint behavior as one explicit mode
 
@@ -256,4 +272,9 @@ _None._
 
 > Populated at the end of each phase. Record surprises, anti-patterns, and improvements for the next phase.
 
-_Empty until the first phase completes._
+### Phase 1 — Endpoint policy and safe transition
+
+- Reusing the locked binding key made the locked-to-configurable upgrade a validation-only transition: a valid installation keeps its session without a preference migration or crash window.
+- Separating the flow into a mutation-free network probe and a guarded post-logout write makes every failure boundary explicit. Phase 2 should preserve that order rather than embedding persistence in interface callbacks.
+- The library-private validated-candidate type narrows the interface's safe path. Phase 2 should keep one `EndpointSwitcher` alive only for the Server Settings page, close it with the page lifecycle, and translate typed policy and probe failures into local messages.
+- Endpoint behavior is shared Dart code, so focused adapter and preference tests cover the main safety invariants before either platform UI is installed. Phase 2 still needs widget coverage for confirmation, cancellation, progress, failure recovery, and return-to-sign-in behavior.
