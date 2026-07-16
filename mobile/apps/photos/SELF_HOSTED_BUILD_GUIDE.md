@@ -130,6 +130,43 @@ Output:
 build/app/outputs/flutter-apk/app-selfhosted-release.apk
 ```
 
+#### Audited release preparation
+
+Use the release-preparation command for any APK intended for distribution. It
+requires a clean committed and pushed worktree, delegates the build to the
+guarded configurable wrapper, deletes the expected build output first so a
+stale APK cannot pass, and audits the final binary rather than trusting build
+arguments.
+
+Choose an absolute output directory outside the Git repository. Prepared files
+are never overwritten and are made read-only:
+
+```sh
+./scripts/prepare_self_hosted_android_release.sh \
+  --output-dir "/Users/vanton/projects/ente-android-toolchain/prepared-releases"
+```
+
+The command verifies:
+
+- The source worktree is clean, remains on one commit throughout the build,
+  and that commit is reachable from an `origin/*` ref.
+- `origin` produces an exact GitHub commit URL for the corresponding AGPL source.
+- The APK package and pubspec version match the reviewed source.
+- The APK is non-debuggable and uses the pinned SDK range and ARM ABIs.
+- The complete canonical HTTPS origin exists in the compiled Flutter library.
+- ZIP integrity, APK Signature Scheme v2, the one expected signer certificate,
+  and the final SHA-256 all pass.
+
+Success writes an immutable-name APK and adjacent `.manifest.json`. The JSON
+records the absolute artifact path and hash, source commit and URL, Android
+identity and version, SDKs, ABIs, endpoint, signature schemes, signer
+fingerprint, and preparation schema/tool version. Signing passwords and other
+credentials are neither printed nor written to the manifest.
+
+This preparation stage does not invoke Firebase or upload anything. Publication
+must consume the exact APK and manifest produced here; it must not rebuild or
+resign the application.
+
 Install it on a connected USB-debugging device:
 
 ```sh
