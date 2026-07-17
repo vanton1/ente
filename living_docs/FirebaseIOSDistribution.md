@@ -14,7 +14,7 @@
 |------:|----:|-------|:----:|--------|-------|
 | 1 | 1.1 | Audit Cytech membership and signing permissions | S | 🟢 done | Verified the selected Cytech Ltd organization has an active Apple Developer Program membership, the current program agreement is accepted, and Certificates, Identifiers, Devices, Profiles, Keys, and App Store Connect resources are available. The owner is the Account Holder rather than only an Admin, so closed-beta authorization and full signing-resource access are satisfied without another approver. Local audit found Xcode 26.6, two valid Apple Development identities, no Apple Distribution identity, and only expired historical Cytech profiles; Tasks 1.3 and 1.5 therefore remain responsible for current distribution signing and provisioning. No Apple account state changed, and no team identifier, address, phone number, device identifier, certificate, or profile was added to Git. |
 | 1 | 1.2 | Register the new self-hosted Apple App ID | S | 🟢 done | Registered explicit Apple App ID `me.vanton.ente.photos.selfhosted` under the verified Cytech organization with description `Ente Photos Self-Hosted`. The pre-registration confirmation and resulting identifier list showed the exact bundle value and no additional capabilities. No certificate, device, provisioning profile, Team ID, account detail, or credential was added to Git or changed outside this App ID registration. |
-| 1 | 1.3 | Establish the Apple Distribution certificate | S | ⚪ not started | Reuse an authorized certificate with its private key or create one through the Cytech team; record only its public fingerprint, subject, and expiry in audit evidence. |
+| 1 | 1.3 | Establish the Apple Distribution certificate | S | 🟢 done | Left the active teammate-created distribution certificate untouched and created a separate `Apple Distribution: Cytech Ltd` identity through Xcode. The matching private key is available in the macOS login Keychain and was not exported. `security find-identity` validates the identity; its public SHA-256 fingerprint is `8fcaf5f761acbcbeeae4710fb75370646071d8a905ac2a70ffeb46676c4a1e0c`, and the certificate expires on 2027-07-17. No App ID, device, provisioning profile, certificate private key, team identifier, or account detail was added to Git, and no device or profile state changed. |
 | 1 | 1.4 | Register the owner's iPhone privately | S | ⚪ not started | Add the intended iPhone to Cytech's registered devices while keeping its unique device identifier out of Git, release notes, and repository logs. |
 | 1 | 1.5 | Create the owner-only Ad Hoc provisioning profile | S | ⚪ not started | Bind the new App ID, distribution certificate, and owner device; audit application identifier, team, profile UUID, expiry, certificate, and device count without recording device identifiers. |
 | 1 | 1.6 | Rename only the self-hosted iOS target | M | ⚪ not started | Change `SelfHostedRunner` from `com.vanton1.ente.photos.selfhosted` to `me.vanton.ente.photos.selfhosted`; preserve the official Ente target, Android identities, configurable endpoint behavior, empty entitlement set, and extension exclusions. |
@@ -76,6 +76,8 @@ iOS treats the old and new bundle identifiers as unrelated applications. Their p
 The Cytech organization owns the new Apple App ID and its distribution lifecycle. Certificate loss or expiry is recoverable while authorized Cytech access and membership remain: issue a replacement distribution certificate and provisioning profile under the same team and App ID. Loss of team authorization, an unrenewed membership, or an unaccepted Apple agreement can stop new builds and profile renewal even when source and Firebase access remain available.
 
 Task 1.1 confirmed through the live Apple Developer account that the selected organization membership and current agreement are active and that the owner is the Cytech Account Holder with access to certificates, identifiers, devices, profiles, keys, and App Store Connect. This supersedes the planning assumption that the owner held only an Admin role. The local Mac has valid development identities but no current Apple Distribution identity or usable Cytech provisioning profile, so later tasks must establish those assets explicitly rather than reusing stale local state.
+
+Task 1.3 established a separate `Apple Distribution: Cytech Ltd` certificate and matching private key in the local macOS login Keychain. The active teammate-created distribution certificate remains untouched because its private key is not present locally. Local signing now uses the separately owned identity, whose public SHA-256 fingerprint is `8fcaf5f761acbcbeeae4710fb75370646071d8a905ac2a70ffeb46676c4a1e0c` and whose validity ends on 2027-07-17; the private key is not exported or committed.
 
 ### Ad Hoc device and privacy boundary
 
@@ -215,6 +217,14 @@ Primary external references are Apple's [device registration limits](https://dev
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
 
+### 2026-07-17 — Create a separate local Cytech distribution identity
+
+**Decision:** Create a new Apple Distribution certificate and matching private key through Xcode for local Cytech signing, while leaving the active teammate-created distribution certificate untouched.
+
+**Why:** The existing active portal certificate does not have an accessible private key on this Mac. A separately owned identity isolates key custody and revocation while enabling local Ad Hoc signing without depending on another operator.
+
+**Alternatives considered:** Obtain and import the teammate's `.p12`, which would transfer private-key custody and share revocation impact, or ask the teammate to sign each release, which would add external coordination to every build.
+
 ### 2026-07-17 — Register the explicit App ID without capabilities
 
 **Decision:** Register `me.vanton.ente.photos.selfhosted` as an explicit Apple App ID under Cytech with description `Ente Photos Self-Hosted` and no additional capabilities.
@@ -309,7 +319,6 @@ Primary external references are Apple's [device registration limits](https://dev
 
 _Add new questions as they arise. Move resolved questions to §5 once answered, with the resolution as the decision._
 
-- Is there an authorized Apple Distribution certificate with an accessible private key to reuse, or should Task 1.3 create a new certificate?
 - What minimum remaining certificate/profile validity should publication require rather than merely warn about?
 - Which external directories will hold Ad Hoc profiles, archives, immutable IPAs/manifests, and Firebase receipts?
 - What exact baseline marketing version and initial `CFBundleVersion` should Task 1.8 pin after auditing the current source and any existing Cytech/Firebase records?
