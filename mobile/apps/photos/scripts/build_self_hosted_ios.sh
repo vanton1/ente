@@ -313,11 +313,10 @@ run_adhoc_export() {
     -destination "generic/platform=iOS" \
     -archivePath "$archive_path" \
     -hideShellScriptEnvironment \
-    CODE_SIGN_STYLE=Manual \
-    "CODE_SIGN_IDENTITY=$validated_certificate_sha1" \
-    "DEVELOPMENT_TEAM=$distribution_team" \
+    SELF_HOSTED_CODE_SIGN_STYLE=Manual \
+    "SELF_HOSTED_CODE_SIGN_IDENTITY=$validated_certificate_sha1" \
     "SELF_HOSTED_DEVELOPMENT_TEAM=$distribution_team" \
-    "PROVISIONING_PROFILE_SPECIFIER=$validated_profile_uuid" \
+    "SELF_HOSTED_PROVISIONING_PROFILE_SPECIFIER=$validated_profile_uuid" \
     "MARKETING_VERSION=$marketing_version" \
     "CURRENT_PROJECT_VERSION=$build_number" \
     "FLUTTER_BUILD_NAME=$marketing_version" \

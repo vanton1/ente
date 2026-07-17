@@ -19,7 +19,7 @@
 | 1 | 1.5 | Create the owner-only Ad Hoc provisioning profile | S | 🟢 done | Generated and downloaded manual Ad Hoc profile `Ente Photos Self-Hosted Owner Ad Hoc` with UUID `a988a9d8-5e7e-43ef-9625-722e2fca0d3a`, expiring 2027-07-17. Local decoding verified the exact bundle/application-identifier binding, Cytech team binding without printing its identifier, one authorized device, one distribution certificate, and non-debug Ad Hoc state. The embedded certificate fingerprint matches Task 1.3. The `.mobileprovision` file, Team ID, and device identifier remain outside Git. |
 | 1 | 1.6 | Rename only the self-hosted iOS target | M | 🟢 done | Changed the active `SelfHostedRunner` product identifier to `me.vanton.ente.photos.selfhosted` and aligned its non-entitled app-group placeholder with the new namespace. Updated current README/build/launch and clean-install guidance while preserving historical evidence and Android legacy guidance. Added two focused identity/core-only tests; they and focused analysis pass under pinned Flutter 3.38.10. Xcode resolves the new identity for Debug, Profile, and Release with the empty self-hosted entitlement file; the official Runner remains `io.ente.frame` with its original entitlements, no Android application file changed, and guarded endpoint validation still passes. |
 | 1 | 1.7 | Add a reproducible Ad Hoc archive and export command | M | 🟢 done | Extended the existing guarded wrapper with non-building `--adhoc-preflight` and reproducible `--adhoc` modes. They require explicit local team/profile, expected device count, version/build, and new external archive/export paths; validate exact app/team/non-debug/device/expiry/certificate/private-key bindings; install only the validated profile locally; and archive/export with manual Xcode 26 `release-testing` options. The command pins the reviewed certificate, never enables Apple provisioning/device mutations, refuses output reuse, and requires one IPA. Eleven focused archive tests plus the target-identity tests and analysis pass; a real owner-profile/Keychain preflight also passed without invoking Flutter/Xcode or producing an artifact. No Team ID, device identifier, profile, or private key was committed. |
-| 1 | 1.8 | Export and audit the baseline IPA | M | ⚪ not started | Verify the final IPA's bundle, version/build, compiled server, architecture, non-debug state, entitlements, embedded profile, Cytech team, certificate fingerprint, expiry, archive integrity, and SHA-256. |
+| 1 | 1.8 | Export and audit the baseline IPA | M | 🟢 done | Built owner-only baseline `1.3.59` (`2159`) for `https://macbook-pro-2.tailcfdac8.ts.net` and preserved the 88,632,015-byte IPA under `/Users/vanton/projects/ente-ios-toolchain/baseline-artifacts`. The first archive failed safely before artifact creation because command-line profile settings propagated to CocoaPods; target-scoped `SELF_HOSTED_*` signing indirection fixed the release path without provisioning Pods, and all 13 focused archive/identity tests plus analysis pass. The successful Xcode 26 manual export produced one extension-free IPA. Independent ZIP, archive, deep-signature, plist, AOT-string, entitlement, profile, certificate, and Mach-O audits verified the exact bundle and version, intended compiled endpoint, arm64 across 103 Mach-O files, non-debug state, no push/app-group/associated-domain/iCloud entitlements, exact private team/application binding, one authorized device, pinned certificate valid through 2027-07-17, and IPA SHA-256 `b4996440a95079b082cc45ca51f707297a9749b41ad6e61074d0fda6b42266fe`. The IPA was not installed or published, and no Team ID, device identifier, profile, private key, or export options entered Git. |
 | 1 | 1.9 | Verify the new app side by side on the owner's iPhone | M | ⚪ not started | Install the Ad Hoc IPA while retaining the legacy-bundle app, sign in to the intended Museum account, and prove foreground encrypted upload/download plus restart persistence. |
 | 2 | 2.1 | Register the iOS application in Firebase | S | ⚪ not started | Add the exact new bundle identifier to the existing self-hosted Firebase project; keep the Firebase iOS App ID as local publication configuration rather than normal application runtime configuration. |
 | 2 | 2.2 | Create the dedicated iOS tester group | S | ⚪ not started | Create stable group alias `trusted-ios-testers` and add the owner privately; keep tester identities out of Git. |
@@ -114,7 +114,9 @@ explicit App ID -> distribution certificate -> owner device -> Ad Hoc profile
 
 The existing guarded configurable iOS wrapper remains the single application build entry point. Its `--adhoc-preflight` mode validates explicit local team/profile, expected-device-count, version/build, and external output-path inputs without invoking Flutter or Xcode. Its `--adhoc` mode repeats those checks, configures the locked Flutter release, creates the manually signed archive, generates ephemeral Xcode 26 `release-testing` export options, and exports exactly one IPA. The validated profile is installed only into Xcode's local cache; the Team ID, device identifiers, profile, private key, export options, archive, and IPA remain outside Git. The command does not request Xcode provisioning updates or device registration and never overwrites output.
 
-Task 1.8 inspects the final IPA rather than trusting those build arguments. Its audit covers bundle identity, version/build, compiled endpoint, supported architecture, debug state, entitlements, application identifier, team, profile expiry and device count, signing certificate, ZIP integrity, and hash.
+The first real archive exposed that Xcode command-line `PROVISIONING_PROFILE_SPECIFIER`, `CODE_SIGN_*`, and `DEVELOPMENT_TEAM` settings propagate into every workspace target, including CocoaPods targets that must not receive profiles. The self-hosted xcconfig now owns default automatic-development values through `SELF_HOSTED_*` indirection. Ad Hoc archive commands override only those custom settings, so `SelfHostedRunner` receives the manual profile, exact certificate, and Cytech team while Pods retain their normal unsigned framework settings.
+
+Task 1.8 inspected the final IPA rather than trusting the build arguments. Baseline `1.3.59` (`2159`) contains the intended private Museum origin as an exact Flutter AOT string, one `me.vanton.ente.photos.selfhosted` application, no extensions, and arm64 across all 103 Mach-O files. The profile and signed entitlements are non-debug, bind privately to the exact application and Cytech team, authorize one device, and omit push, application-group, associated-domain, and iCloud capabilities. Deep code-signature and ZIP verification pass; the profile and signing leaf certificate match the pinned public fingerprint and remain valid through 2027-07-17. The 88,632,015-byte IPA has SHA-256 `b4996440a95079b082cc45ca51f707297a9749b41ad6e61074d0fda6b42266fe` and remains unpublished in the private baseline-artifact directory for Task 1.9.
 
 ### Two-stage Firebase release pipeline
 
@@ -224,6 +226,30 @@ Primary external references are Apple's [device registration limits](https://dev
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
+
+### 2026-07-17 — Scope manual signing settings to SelfHostedRunner
+
+**Decision:** Route code-sign identity, signing style, development team, and provisioning-profile selection through `SELF_HOSTED_*` variables consumed only by `SelfHosted.xcconfig`; the Ad Hoc wrapper overrides those variables instead of global Xcode build settings.
+
+**Why:** The first real archive proved that global command-line provisioning settings propagate into CocoaPods targets, which correctly reject application profiles. Target-scoped indirection signs the application exactly while leaving Pods on their normal framework build settings, and it keeps private values outside project files.
+
+**Alternatives considered:** Continue passing global Xcode settings, which cannot archive this workspace; edit generated CocoaPods settings, which is broad and regeneration-sensitive; or write the private team/profile into the Xcode project, which would leak local signing bindings into Git.
+
+### 2026-07-17 — Pin the owner baseline to version 1.3.59 build 2159
+
+**Decision:** Keep the source marketing version `1.3.59` and assign the new iOS owner baseline `CFBundleVersion` `2159`.
+
+**Why:** Source and the Android baseline use `1.3.59` (`2158`), while the new iOS bundle has no prior Firebase release. Advancing one build number gives the distinct IPA bytes a unique identity and establishes the strictly increasing update sequence without inventing a new marketing release.
+
+**Alternatives considered:** Reuse build `2158`, which would make different platform/source and IPA baselines share one build identity, or jump to an arbitrary much higher number, which adds no safety while consuming versioning headroom.
+
+### 2026-07-17 — Keep iOS release inputs and evidence under one private local root
+
+**Decision:** Use `/Users/vanton/projects/ente-ios-toolchain` outside Git, with `signing` for profiles, `baseline-artifacts` for Phase 1 archives/IPAs/logs, and later `prepared-releases` and `firebase-receipts` directories for guarded publication evidence.
+
+**Why:** A dedicated owner-only root separates private Apple inputs and large release evidence from the public checkout and from the Android toolchain while giving later commands stable, reviewable path boundaries.
+
+**Alternatives considered:** Leave profiles and IPAs in Downloads, where provenance and retention are unclear; store them under the Git checkout and risk accidental inclusion; or mix them into the Android toolchain root and blur platform-specific signing and recovery boundaries.
 
 ### 2026-07-17 — Separate Ad Hoc preflight from archive and export
 
@@ -360,8 +386,6 @@ Primary external references are Apple's [device registration limits](https://dev
 _Add new questions as they arise. Move resolved questions to §5 once answered, with the resolution as the decision._
 
 - What minimum remaining certificate/profile validity should publication require rather than merely warn about?
-- Which external directories will hold Ad Hoc profiles, archives, immutable IPAs/manifests, and Firebase receipts?
-- What exact baseline marketing version and initial `CFBundleVersion` should Task 1.8 pin after auditing the current source and any existing Cytech/Firebase records?
 
 ---
 

@@ -46,12 +46,22 @@ void main() {
         expect(toolLog, contains("--flavor\tselfhosted"));
         expect(toolLog, contains("--config-only\t--no-codesign"));
         expect(toolLog, contains("xcodebuild\tarchive"));
-        expect(toolLog, contains("CODE_SIGN_STYLE=Manual"));
-        expect(toolLog, contains("CODE_SIGN_IDENTITY=$_certificateSha1"));
+        expect(toolLog, contains("\tSELF_HOSTED_CODE_SIGN_STYLE=Manual"));
         expect(
           toolLog,
-          contains("PROVISIONING_PROFILE_SPECIFIER=$_profileUuid"),
+          contains("\tSELF_HOSTED_CODE_SIGN_IDENTITY=$_certificateSha1"),
         );
+        expect(
+          toolLog,
+          contains(
+            "\tSELF_HOSTED_PROVISIONING_PROFILE_SPECIFIER=$_profileUuid",
+          ),
+        );
+        expect(toolLog, contains("\tSELF_HOSTED_DEVELOPMENT_TEAM=$_teamId"));
+        expect(toolLog, isNot(contains("\tCODE_SIGN_STYLE=")));
+        expect(toolLog, isNot(contains("\tCODE_SIGN_IDENTITY=")));
+        expect(toolLog, isNot(contains("\tDEVELOPMENT_TEAM=")));
+        expect(toolLog, isNot(contains("\tPROVISIONING_PROFILE_SPECIFIER=")));
         expect(toolLog, contains("xcodebuild\t-exportArchive"));
         expect(toolLog, isNot(contains("-allowProvisioningUpdates")));
         expect(

@@ -13,6 +13,15 @@ void main() {
 
     expect(settings["PRODUCT_BUNDLE_IDENTIFIER"], expectedBundleIdentifier);
     expect(settings["CUSTOM_GROUP_ID"], expectedAppGroupPlaceholder);
+    expect(
+      settings["CODE_SIGN_IDENTITY"],
+      r"$(SELF_HOSTED_CODE_SIGN_IDENTITY)",
+    );
+    expect(settings["CODE_SIGN_STYLE"], r"$(SELF_HOSTED_CODE_SIGN_STYLE)");
+    expect(
+      settings["PROVISIONING_PROFILE_SPECIFIER"],
+      r"$(SELF_HOSTED_PROVISIONING_PROFILE_SPECIFIER)",
+    );
     expect(config, isNot(contains(legacyBundleIdentifier)));
   });
 
