@@ -12,7 +12,7 @@
 
 | Phase | Task | Title | Size | Status | Notes |
 |------:|----:|-------|:----:|--------|-------|
-| 1 | 1.1 | Audit Cytech membership and signing permissions | S | ⚪ not started | Verify active Apple Developer Program membership, accepted agreements, Account Holder authorization, and the owner's Admin access to identifiers, certificates, profiles, and devices without changing Apple state. |
+| 1 | 1.1 | Audit Cytech membership and signing permissions | S | 🟢 done | Verified the selected Cytech Ltd organization has an active Apple Developer Program membership, the current program agreement is accepted, and Certificates, Identifiers, Devices, Profiles, Keys, and App Store Connect resources are available. The owner is the Account Holder rather than only an Admin, so closed-beta authorization and full signing-resource access are satisfied without another approver. Local audit found Xcode 26.6, two valid Apple Development identities, no Apple Distribution identity, and only expired historical Cytech profiles; Tasks 1.3 and 1.5 therefore remain responsible for current distribution signing and provisioning. No Apple account state changed, and no team identifier, address, phone number, device identifier, certificate, or profile was added to Git. |
 | 1 | 1.2 | Register the new self-hosted Apple App ID | S | ⚪ not started | Register exact bundle identifier `me.vanton.ente.photos.selfhosted` under Cytech only after Task 1.1 passes; record no team identifier or account credential in Git. |
 | 1 | 1.3 | Establish the Apple Distribution certificate | S | ⚪ not started | Reuse an authorized certificate with its private key or create one through the Cytech team; record only its public fingerprint, subject, and expiry in audit evidence. |
 | 1 | 1.4 | Register the owner's iPhone privately | S | ⚪ not started | Add the intended iPhone to Cytech's registered devices while keeping its unique device identifier out of Git, release notes, and repository logs. |
@@ -72,6 +72,8 @@ Only the self-hosted target changes identity. The official Ente Runner, Android 
 iOS treats the old and new bundle identifiers as unrelated applications. Their preferences, databases, keychain state, sessions, endpoint bindings, and caches do not migrate. Phase 1 deliberately installs the new app beside the old app and proves the cloud account before Phase 3 removes the legacy installation. Encrypted server media remains available after the owner signs in to the same Museum account.
 
 The Cytech organization owns the new Apple App ID and its distribution lifecycle. Certificate loss or expiry is recoverable while authorized Cytech access and membership remain: issue a replacement distribution certificate and provisioning profile under the same team and App ID. Loss of team authorization, an unrenewed membership, or an unaccepted Apple agreement can stop new builds and profile renewal even when source and Firebase access remain available.
+
+Task 1.1 confirmed through the live Apple Developer account that the selected organization membership and current agreement are active and that the owner is the Cytech Account Holder with access to certificates, identifiers, devices, profiles, keys, and App Store Connect. This supersedes the planning assumption that the owner held only an Admin role. The local Mac has valid development identities but no current Apple Distribution identity or usable Cytech provisioning profile, so later tasks must establish those assets explicitly rather than reusing stale local state.
 
 ### Ad Hoc device and privacy boundary
 
@@ -211,6 +213,14 @@ Primary external references are Apple's [device registration limits](https://dev
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
 
+### 2026-07-17 — Confirm the owner as Cytech Account Holder
+
+**Decision:** Proceed with the Cytech organization ownership selected during planning. Treat the owner's live Account Holder role as the authorization for the closed beta and as full access to the Apple signing resources required by later tasks.
+
+**Why:** The Apple Developer account showed an active organization membership, an accepted current program agreement, and access to Certificates, Identifiers, Devices, Profiles, Keys, and App Store Connect. The Account Holder finding is stronger than the earlier Admin-role assumption. The local machine has no Apple Distribution identity and no current Cytech profile, but those are expected deliverables of Tasks 1.3 and 1.5 rather than failures of membership authorization.
+
+**Alternatives considered:** Seek approval from a different Account Holder or move the application to a separate personal membership. Neither is required after the live account audit.
+
 ### 2026-07-17 — Keep iOS distribution in a focused living document
 
 **Decision:** Track the initiative in `living_docs/FirebaseIOSDistribution.md`, finish with `living_docs/FirebaseIOSDistributionArchitecture.md`, and place the operational runbook at `mobile/apps/photos/SELF_HOSTED_IOS_DISTRIBUTION_GUIDE.md`. Link existing mobile endpoint, iOS signing, Android Firebase, and build documents as companions.
@@ -289,7 +299,6 @@ Primary external references are Apple's [device registration limits](https://dev
 
 _Add new questions as they arise. Move resolved questions to §5 once answered, with the resolution as the decision._
 
-- Does the Cytech Account Holder authorize this closed beta, and are the membership, agreements, and Admin signing permissions currently active?
 - Is there an authorized Apple Distribution certificate with an accessible private key to reuse, or should Task 1.3 create a new certificate?
 - What minimum remaining certificate/profile validity should publication require rather than merely warn about?
 - Which external directories will hold Ad Hoc profiles, archives, immutable IPAs/manifests, and Firebase receipts?
