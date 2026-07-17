@@ -15,7 +15,7 @@
 | 1 | 1.1 | Audit Cytech membership and signing permissions | S | 🟢 done | Verified the selected Cytech Ltd organization has an active Apple Developer Program membership, the current program agreement is accepted, and Certificates, Identifiers, Devices, Profiles, Keys, and App Store Connect resources are available. The owner is the Account Holder rather than only an Admin, so closed-beta authorization and full signing-resource access are satisfied without another approver. Local audit found Xcode 26.6, two valid Apple Development identities, no Apple Distribution identity, and only expired historical Cytech profiles; Tasks 1.3 and 1.5 therefore remain responsible for current distribution signing and provisioning. No Apple account state changed, and no team identifier, address, phone number, device identifier, certificate, or profile was added to Git. |
 | 1 | 1.2 | Register the new self-hosted Apple App ID | S | 🟢 done | Registered explicit Apple App ID `me.vanton.ente.photos.selfhosted` under the verified Cytech organization with description `Ente Photos Self-Hosted`. The pre-registration confirmation and resulting identifier list showed the exact bundle value and no additional capabilities. No certificate, device, provisioning profile, Team ID, account detail, or credential was added to Git or changed outside this App ID registration. |
 | 1 | 1.3 | Establish the Apple Distribution certificate | S | 🟢 done | Left the active teammate-created distribution certificate untouched and created a separate `Apple Distribution: Cytech Ltd` identity through Xcode. The matching private key is available in the macOS login Keychain and was not exported. `security find-identity` validates the identity; its public SHA-256 fingerprint is `8fcaf5f761acbcbeeae4710fb75370646071d8a905ac2a70ffeb46676c4a1e0c`, and the certificate expires on 2027-07-17. No App ID, device, provisioning profile, certificate private key, team identifier, or account detail was added to Git, and no device or profile state changed. |
-| 1 | 1.4 | Register the owner's iPhone privately | S | ⚪ not started | Add the intended iPhone to Cytech's registered devices while keeping its unique device identifier out of Git, release notes, and repository logs. |
+| 1 | 1.4 | Register the owner's iPhone privately | S | 🟢 done | Completed Cytech's new-membership-year device-list review while retaining the existing owner iPhone. The Apple device detail offered `Disable`, proving the retained device is enabled, and its identifier was compared privately with the paired, available `vPhone` in Xcode and matched. No new device slot was consumed, and no device identifier or personal device detail was added to Git, release notes, or repository logs. |
 | 1 | 1.5 | Create the owner-only Ad Hoc provisioning profile | S | ⚪ not started | Bind the new App ID, distribution certificate, and owner device; audit application identifier, team, profile UUID, expiry, certificate, and device count without recording device identifiers. |
 | 1 | 1.6 | Rename only the self-hosted iOS target | M | ⚪ not started | Change `SelfHostedRunner` from `com.vanton1.ente.photos.selfhosted` to `me.vanton.ente.photos.selfhosted`; preserve the official Ente target, Android identities, configurable endpoint behavior, empty entitlement set, and extension exclusions. |
 | 1 | 1.7 | Add a reproducible Ad Hoc archive and export command | M | ⚪ not started | Extend the guarded iOS build path to create an archive and IPA for the new identity using explicit local team/profile inputs, without committing signing or device data. |
@@ -82,6 +82,8 @@ Task 1.3 established a separate `Apple Distribution: Cytech Ltd` certificate and
 ### Ad Hoc device and privacy boundary
 
 Every installable IPA embeds an Ad Hoc provisioning profile containing the devices authorized for that build. Firebase collects a tester's device identifier only after the tester accepts the invitation and installs the Firebase registration profile. The operator then registers that device with Apple, refreshes the provisioning profile, and rebuilds the IPA.
+
+Task 1.4 retained the existing owner iPhone during Cytech's new-membership-year device-list review instead of consuming a new device slot. The portal device is enabled, and its identifier was matched privately to the paired, available physical iPhone. The identifier itself remains outside Git and written audit evidence; subsequent profile work refers only to one authorized owner device.
 
 The repository, release notes, manifests, receipts, and committed screenshots never contain tester emails or device identifiers. Audit metadata records only the profile UUID/name as appropriate, expiry, application identifier, team, certificate fingerprint, and authorized-device count. Because an IPA necessarily embeds its provisioning profile, every recipient is trusted with the profile's device list; the channel remains a small closed beta rather than a public download.
 
@@ -216,6 +218,14 @@ Primary external references are Apple's [device registration limits](https://dev
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
+
+### 2026-07-17 — Retain the existing owner iPhone registration
+
+**Decision:** Complete Cytech's annual device-list review without removing the existing owner iPhone, then use that enabled device as the sole owner device for the initial Ad Hoc profile.
+
+**Why:** A private comparison confirmed that the existing portal registration matches the paired physical iPhone intended for testing. Retaining it preserves the valid registration and avoids consuming a duplicate device slot.
+
+**Alternatives considered:** Remove and attempt to re-register the same phone, which adds unnecessary Apple-state churn, or register another entry without comparing identifiers, which risks a duplicate or the wrong device in the provisioning profile.
 
 ### 2026-07-17 — Create a separate local Cytech distribution identity
 
