@@ -147,7 +147,9 @@ For a manually signed Ad Hoc `.xcarchive` and IPA, use the wrapper's
 team/profile, device-count, version/build, and external output-path inputs and
 do not permit Xcode to update Apple provisioning state. See the
 [configurable mobile build guide](SELF_HOSTED_BUILD_GUIDE.md#manually-signed-ad-hoc-archive-and-ipa)
-for the complete private-input and non-overwriting workflow.
+for the complete private-input and non-overwriting workflow, and the
+[iOS closed-beta operations guide](SELF_HOSTED_IOS_DISTRIBUTION_GUIDE.md) for
+guarded Firebase publication, Apple device onboarding, updates, and recovery.
 
 ### Updating dependencies
 

@@ -5,6 +5,8 @@ a default Museum HTTPS origin. The applications can later validate and switch
 to another HTTPS Museum origin through their guarded Server Settings page.
 For closed-beta Android release, tester, update, and recovery procedures, use
 the [Android distribution operations guide](SELF_HOSTED_ANDROID_DISTRIBUTION_GUIDE.md).
+For the corresponding Apple Ad Hoc and Firebase workflow, use the
+[iOS distribution operations guide](SELF_HOSTED_IOS_DISTRIBUTION_GUIDE.md).
 
 The personal applications use separate identities from the official Ente app:
 
@@ -519,6 +521,11 @@ Inspect the Firebase console and reconcile that record before retrying; never
 assume a CLI error means Firebase is unchanged. Only successful receipts enter
 the version ledger, and every later publication for this bundle/App ID must
 have a strictly higher `CFBundleVersion`.
+
+For Apple device registration, Ad Hoc profile refresh, Firebase tester
+onboarding, Developer Mode, Tailscale access, updates, offboarding, and
+recovery, follow the
+[iOS distribution operations guide](SELF_HOSTED_IOS_DISTRIBUTION_GUIDE.md).
 
 ## 5. Server defaults, upgrades, and switching
 
