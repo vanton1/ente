@@ -44,6 +44,25 @@ void main() {
     );
     expect(fromEnvironment.firebaseProjectId, _project);
     expect(fromEnvironment.firebaseAppId, _appId);
+
+    final reconciliation = IOSPublicationOptions.parse(const <String>[
+      "--manifest=/tmp/release.manifest.json",
+      "--receipt-dir=/tmp/firebase-receipts",
+      "--firebase-project=example-project",
+      "--firebase-app=1:123:ios:opaque",
+      "--reconcile-attempt=/tmp/firebase-receipts/release-attempt.json",
+      "--release-evidence=/tmp/firebase-evidence/releases.json",
+      "--preflight-only",
+    ], environment: const <String, String>{});
+    expect(reconciliation.isReconciliation, isTrue);
+    expect(
+      reconciliation.reconciliationAttemptPath,
+      "/tmp/firebase-receipts/release-attempt.json",
+    );
+    expect(
+      reconciliation.releaseEvidencePath,
+      "/tmp/firebase-evidence/releases.json",
+    );
   });
 
   test("rejects relative paths and option-like Firebase identifiers", () {
@@ -148,7 +167,6 @@ void main() {
       "/tmp/notes.txt",
       "--project",
       _project,
-      "--json",
       "--non-interactive",
     ]);
     expect(upload.arguments, isNot(contains("--testers")));
@@ -574,6 +592,129 @@ void main() {
     },
   );
 
+  test(
+    "reconciliation preflight validates without upload or receipt",
+    () async {
+      final fixture = await _PublisherFixture.create();
+      try {
+        final inputs = await fixture.writeReconciliationInputs();
+        final calls = <_ProcessCall>[];
+        final result = await reconcileSelfHostedIOSRelease(
+          fixture.options(
+            preflightOnly: true,
+            reconciliationAttemptPath: inputs.attemptPath,
+            releaseEvidencePath: inputs.evidencePath,
+          ),
+          appDirectoryOverride: fixture.appDirectory,
+          processRunner: _firebaseRunner(calls),
+          releaseAuditor: (prepared, {required environment}) async {},
+        );
+        expect(result, isNull);
+        expect(calls, hasLength(2));
+        expect(
+          calls.any(
+            (call) => call.arguments.first == "appdistribution:distribute",
+          ),
+          isFalse,
+        );
+        expect(
+          fixture.receiptDirectory
+              .listSync(followLinks: false)
+              .whereType<File>()
+              .where(
+                (file) => file.path.endsWith(".firebase-ios-release.json"),
+              ),
+          isEmpty,
+        );
+        expect(File(inputs.attemptPath).existsSync(), isTrue);
+        expect(File(inputs.evidencePath).existsSync(), isTrue);
+      } finally {
+        fixture.dispose();
+      }
+    },
+  );
+
+  test("reconciles JSON-only success without a second upload", () async {
+    final fixture = await _PublisherFixture.create();
+    try {
+      final inputs = await fixture.writeReconciliationInputs();
+      final calls = <_ProcessCall>[];
+      final result = await reconcileSelfHostedIOSRelease(
+        fixture.options(
+          reconciliationAttemptPath: inputs.attemptPath,
+          releaseEvidencePath: inputs.evidencePath,
+        ),
+        appDirectoryOverride: fixture.appDirectory,
+        processRunner: _firebaseRunner(calls),
+        releaseAuditor: (prepared, {required environment}) async {},
+      );
+      expect(result, isNotNull);
+      expect(result!.reconciled, isTrue);
+      expect(
+        result.references.uploadDisposition,
+        "RECONCILED_CLI_JSON_SUCCESS",
+      );
+      expect(
+        calls.any(
+          (call) => call.arguments.first == "appdistribution:distribute",
+        ),
+        isFalse,
+      );
+      final receipt = File(result.receiptPath);
+      expect(receipt.statSync().mode & 0x1ff, 0x124);
+      final value = jsonDecode(receipt.readAsStringSync());
+      expect(value["status"], "published");
+      expect(value["reconciliation"]["noUploadPerformed"], isTrue);
+      expect(
+        value["firebase"]["uploadDisposition"],
+        "RECONCILED_CLI_JSON_SUCCESS",
+      );
+      expect(File(inputs.attemptPath).existsSync(), isTrue);
+      expect(File(inputs.evidencePath).existsSync(), isTrue);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("reconciliation rejects ambiguous official release evidence", () async {
+    final fixture = await _PublisherFixture.create();
+    try {
+      final inputs = await fixture.writeReconciliationInputs();
+      final evidence = File(inputs.evidencePath);
+      Process.runSync("chmod", ["0644", evidence.path]);
+      final value = jsonDecode(evidence.readAsStringSync());
+      (value["releases"] as List<Object?>).add(
+        Map<String, Object?>.from(
+          (value["releases"] as List<Object?>).single! as Map,
+        ),
+      );
+      evidence.writeAsStringSync(jsonEncode(value));
+      Process.runSync("chmod", ["0444", evidence.path]);
+
+      await expectLater(
+        reconcileSelfHostedIOSRelease(
+          fixture.options(
+            reconciliationAttemptPath: inputs.attemptPath,
+            releaseEvidencePath: inputs.evidencePath,
+          ),
+          appDirectoryOverride: fixture.appDirectory,
+          processRunner: _firebaseRunner(<_ProcessCall>[]),
+          releaseAuditor: (prepared, {required environment}) async {},
+        ),
+        throwsA(isA<IOSPublicationException>()),
+      );
+      expect(
+        fixture.receiptDirectory
+            .listSync(followLinks: false)
+            .whereType<File>()
+            .where((file) => file.path.endsWith(".firebase-ios-release.json")),
+        isEmpty,
+      );
+    } finally {
+      fixture.dispose();
+    }
+  });
+
   _registerOptionalRealIpaTests();
 }
 
@@ -772,15 +913,64 @@ class _PublisherFixture {
   final String firebaseCliPath;
   final Map<String, String> environment;
 
-  IOSPublicationOptions options({bool preflightOnly = false}) =>
-      IOSPublicationOptions(
-        manifestPath: manifestPath,
-        receiptDirectory: receiptDirectory.path,
-        firebaseProjectId: _project,
-        firebaseAppId: _appId,
-        environment: environment,
-        preflightOnly: preflightOnly,
-      );
+  IOSPublicationOptions options({
+    bool preflightOnly = false,
+    String? reconciliationAttemptPath,
+    String? releaseEvidencePath,
+  }) => IOSPublicationOptions(
+    manifestPath: manifestPath,
+    receiptDirectory: receiptDirectory.path,
+    firebaseProjectId: _project,
+    firebaseAppId: _appId,
+    environment: environment,
+    preflightOnly: preflightOnly,
+    reconciliationAttemptPath: reconciliationAttemptPath,
+    releaseEvidencePath: releaseEvidencePath,
+  );
+
+  Future<({String attemptPath, String evidencePath})>
+  writeReconciliationInputs() async {
+    final prepared = await loadPrepared();
+    final releaseNotes = buildFirebaseIOSReleaseNotes(prepared);
+    final attemptPath = writeFailedIOSPublicationAttempt(
+      receiptDirectory.path,
+      prepared: prepared,
+      registration: firebaseIOSRegistration(),
+      releaseNotes: releaseNotes,
+      firebaseExitCode: 0,
+      firebaseOutput: jsonEncode(<String, String>{"status": "success"}),
+    );
+    final evidenceDirectory = Directory(p.join(root.path, "evidence"))
+      ..createSync();
+    Process.runSync("chmod", ["0700", evidenceDirectory.path]);
+    final evidencePath = p.join(evidenceDirectory.path, "releases.json");
+    final evidence = <String, Object?>{
+      "releases": <Object?>[
+        <String, Object?>{
+          "name": "projects/123/apps/$_appId/releases/official-release",
+          "releaseNotes": <String, String>{"text": releaseNotes},
+          "displayVersion": prepared.marketingVersion,
+          "buildVersion": prepared.buildNumber.toString(),
+          "createTime": DateTime.now()
+              .toUtc()
+              .subtract(const Duration(seconds: 30))
+              .toIso8601String(),
+          "firebaseConsoleUri":
+              "https://console.firebase.google.com/project/example/release/abc",
+          "testingUri":
+              "https://appdistribution.firebase.google.com/testerapps/abc",
+          "binaryDownloadUri":
+              "https://firebaseappdistribution.googleapis.com/binary?temporary=1",
+        },
+      ],
+    };
+    File(evidencePath).writeAsStringSync(
+      "${const JsonEncoder.withIndent("  ").convert(evidence)}\n",
+      flush: true,
+    );
+    Process.runSync("chmod", ["0444", evidencePath]);
+    return (attemptPath: attemptPath, evidencePath: evidencePath);
+  }
 
   Future<PreparedIOSReleaseManifest> loadPrepared() =>
       loadAndValidatePreparedIOSManifest(

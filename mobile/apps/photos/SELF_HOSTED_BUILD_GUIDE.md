@@ -534,6 +534,28 @@ assume a CLI error means Firebase is unchanged. Only successful receipts enter
 the version ledger, and every later publication for this bundle/App ID must
 have a strictly higher `CFBundleVersion`.
 
+If Firebase returns JSON-only success, do not upload again. Use an approved
+authenticated client to save the official read-only
+[`projects.apps.releases.list`](https://firebase.google.com/docs/reference/app-distribution/rest/v1/projects.apps.releases/list)
+response in a mode-`0700` private directory, make the response mode `0444`, and
+reconcile the immutable attempt/evidence pair:
+
+```sh
+export ENTE_FIREBASE_IOS_ATTEMPT="/absolute/private/path/firebase-ios-attempt.json"
+export ENTE_FIREBASE_IOS_RELEASE_EVIDENCE="/absolute/private/path/firebase-release-list.json"
+
+./scripts/publish_self_hosted_ios_release.sh --preflight-only
+./scripts/publish_self_hosted_ios_release.sh
+```
+
+Reconciliation re-audits the IPA, rechecks the active Firebase app/group, and
+requires the attempt's exit-`0` JSON success to match exactly one official
+release by app resource, version/build, release notes, creation window, and all
+three Firebase references. The first command writes nothing; the second writes
+the normal immutable success receipt without prompting, uploading, notifying,
+or deleting the preserved attempt/evidence files. Normal future publications
+request Firebase CLI output containing those references directly.
+
 For Apple device registration, Ad Hoc profile refresh, Firebase tester
 onboarding, Developer Mode, Tailscale access, updates, offboarding, and
 recovery, follow the

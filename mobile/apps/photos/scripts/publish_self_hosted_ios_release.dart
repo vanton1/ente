@@ -6,7 +6,7 @@ import "package:path/path.dart" as p;
 import "prepare_self_hosted_ios_release.dart" as preparation;
 
 const publicationToolName = "ente-self-hosted-ios-firebase-publisher";
-const publicationToolVersion = "1.0.0";
+const publicationToolVersion = "1.1.0";
 const publicationReceiptSchemaVersion = 1;
 const trustedIOSTesterGroupAlias = "trusted-ios-testers";
 const _maximumReleaseNotesBytes = 10000;
@@ -22,9 +22,20 @@ Usage:
     --firebase-project your-project-id \\
     --firebase-app 1:1234567890:ios:opaque-id
 
+Reconcile one successful JSON-only Firebase attempt without uploading:
+  ./scripts/publish_self_hosted_ios_release.sh \\
+    --manifest /absolute/path/release.manifest.json \\
+    --receipt-dir /absolute/path/firebase-receipts \\
+    --firebase-project your-project-id \\
+    --firebase-app 1:1234567890:ios:opaque-id \\
+    --reconcile-attempt /absolute/path/firebase-ios-attempt.json \\
+    --release-evidence /absolute/path/firebase-release-list.json
+
 Options:
   --release-notes-file PATH  Append operator notes to generated audit notes.
   --preflight-only           Verify everything without prompting or uploading.
+  --reconcile-attempt PATH   Immutable JSON-only success attempt to reconcile.
+  --release-evidence PATH    Immutable official release-list API response.
   -h, --help                 Show this help.
 
 Environment alternatives:
@@ -32,11 +43,14 @@ Environment alternatives:
   ENTE_FIREBASE_RELEASE_RECEIPT_DIR
   ENTE_FIREBASE_PROJECT_ID
   ENTE_FIREBASE_IOS_APP_ID
+  ENTE_FIREBASE_IOS_ATTEMPT
+  ENTE_FIREBASE_IOS_RELEASE_EVIDENCE
   FIREBASE_CLI                       Firebase executable; otherwise use PATH.
 
 The Firebase group is pinned to '$trustedIOSTesterGroupAlias'. Publishing
 requires typing the exact release-specific confirmation shown after all checks.
-The command never invokes Flutter, Xcode, signing, or Apple account mutation.
+Reconciliation never uploads and preserves its attempt/evidence inputs. The
+command never invokes Flutter, Xcode, signing, or Apple account mutation.
 """;
 
 Future<void> main(List<String> arguments) async {
@@ -50,12 +64,18 @@ Future<void> main(List<String> arguments) async {
       return;
     }
 
-    final result = await publishSelfHostedIOSRelease(options);
+    final result = options.isReconciliation
+        ? await reconcileSelfHostedIOSRelease(options)
+        : await publishSelfHostedIOSRelease(options);
     if (result == null) {
       return;
     }
     stdout.writeln();
-    stdout.writeln("Firebase iOS publication completed:");
+    stdout.writeln(
+      result.reconciled
+          ? "Firebase iOS publication reconciliation completed:"
+          : "Firebase iOS publication completed:",
+    );
     stdout.writeln("  Receipt: ${result.receiptPath}");
     stdout.writeln("  Console: ${result.references.firebaseConsoleUri}");
     stdout.writeln("  Tester: ${result.references.testingUri}");
@@ -79,6 +99,8 @@ class IOSPublicationOptions {
     required this.firebaseAppId,
     required this.environment,
     this.releaseNotesFile,
+    this.reconciliationAttemptPath,
+    this.releaseEvidencePath,
     this.preflightOnly = false,
     this.showHelp = false,
   });
@@ -104,6 +126,8 @@ class IOSPublicationOptions {
     String? firebaseProjectId;
     String? firebaseAppId;
     String? releaseNotesFile;
+    String? reconciliationAttemptPath;
+    String? releaseEvidencePath;
     var preflightOnly = false;
 
     for (var index = 0; index < arguments.length; index++) {
@@ -140,6 +164,16 @@ class IOSPublicationOptions {
         releaseNotesFile = argument.substring("--release-notes-file=".length);
       } else if (argument == "--preflight-only") {
         preflightOnly = true;
+      } else if (argument == "--reconcile-attempt") {
+        reconciliationAttemptPath = readValue(argument);
+      } else if (argument.startsWith("--reconcile-attempt=")) {
+        reconciliationAttemptPath = argument.substring(
+          "--reconcile-attempt=".length,
+        );
+      } else if (argument == "--release-evidence") {
+        releaseEvidencePath = readValue(argument);
+      } else if (argument.startsWith("--release-evidence=")) {
+        releaseEvidencePath = argument.substring("--release-evidence=".length);
       } else {
         throw IOSPublicationException(
           "Unknown argument '$argument'.\n\n$_usage",
@@ -152,6 +186,8 @@ class IOSPublicationOptions {
     receiptDirectory ??= environment["ENTE_FIREBASE_RELEASE_RECEIPT_DIR"];
     firebaseProjectId ??= environment["ENTE_FIREBASE_PROJECT_ID"];
     firebaseAppId ??= environment["ENTE_FIREBASE_IOS_APP_ID"];
+    reconciliationAttemptPath ??= environment["ENTE_FIREBASE_IOS_ATTEMPT"];
+    releaseEvidencePath ??= environment["ENTE_FIREBASE_IOS_RELEASE_EVIDENCE"];
 
     final requiredValues = <String, String?>{
       "--manifest or ENTE_IOS_RELEASE_MANIFEST": manifestPath,
@@ -188,6 +224,33 @@ class IOSPublicationOptions {
         );
       }
     }
+    final hasAttempt = reconciliationAttemptPath != null;
+    final hasEvidence = releaseEvidencePath != null;
+    if (hasAttempt != hasEvidence) {
+      throw const IOSPublicationException(
+        "Reconciliation requires both --reconcile-attempt and "
+        "--release-evidence.",
+        exitCode: 64,
+      );
+    }
+    if (hasAttempt) {
+      if (releaseNotesFile != null) {
+        throw const IOSPublicationException(
+          "Reconciliation uses the immutable attempted release notes and "
+          "does not accept --release-notes-file.",
+          exitCode: 64,
+        );
+      }
+      reconciliationAttemptPath = p.normalize(reconciliationAttemptPath);
+      releaseEvidencePath = p.normalize(releaseEvidencePath!);
+      if (!p.isAbsolute(reconciliationAttemptPath) ||
+          !p.isAbsolute(releaseEvidencePath)) {
+        throw const IOSPublicationException(
+          "Reconciliation attempt and evidence paths must be absolute.",
+          exitCode: 64,
+        );
+      }
+    }
     firebaseProjectId = firebaseProjectId!.trim();
     firebaseAppId = firebaseAppId!.trim();
     if (firebaseProjectId.startsWith("-") || firebaseAppId.startsWith("-")) {
@@ -203,6 +266,8 @@ class IOSPublicationOptions {
       firebaseProjectId: firebaseProjectId,
       firebaseAppId: firebaseAppId,
       releaseNotesFile: releaseNotesFile,
+      reconciliationAttemptPath: reconciliationAttemptPath,
+      releaseEvidencePath: releaseEvidencePath,
       preflightOnly: preflightOnly,
       environment: Map<String, String>.unmodifiable(environment),
     );
@@ -213,9 +278,13 @@ class IOSPublicationOptions {
   final String firebaseProjectId;
   final String firebaseAppId;
   final String? releaseNotesFile;
+  final String? reconciliationAttemptPath;
+  final String? releaseEvidencePath;
   final bool preflightOnly;
   final bool showHelp;
   final Map<String, String> environment;
+
+  bool get isReconciliation => reconciliationAttemptPath != null;
 }
 
 class IOSPublicationException implements Exception {
@@ -326,9 +395,27 @@ class IOSPublicationResult {
   const IOSPublicationResult({
     required this.receiptPath,
     required this.references,
+    this.reconciled = false,
   });
 
   final String receiptPath;
+  final FirebaseIOSReleaseReferences references;
+  final bool reconciled;
+}
+
+class IOSReconciliationEvidence {
+  const IOSReconciliationEvidence({
+    required this.attemptedAt,
+    required this.releaseCreatedAt,
+    required this.releaseNotes,
+    required this.releaseResourceName,
+    required this.references,
+  });
+
+  final DateTime attemptedAt;
+  final DateTime releaseCreatedAt;
+  final String releaseNotes;
+  final String releaseResourceName;
   final FirebaseIOSReleaseReferences references;
 }
 
@@ -433,7 +520,6 @@ class FirebaseIOSCliClient {
       releaseNotesFile,
       "--project",
       projectId,
-      "--json",
       "--non-interactive",
     ],
     workingDirectory: workingDirectory,
@@ -664,6 +750,383 @@ Future<IOSPublicationResult?> publishSelfHostedIOSRelease(
       firebaseWorkingDirectory.deleteSync(recursive: true);
     }
   }
+}
+
+Future<IOSPublicationResult?> reconcileSelfHostedIOSRelease(
+  IOSPublicationOptions options, {
+  IOSPublicationProcessRunner processRunner = runIOSPublicationProcess,
+  IOSPreparedReleaseAuditor releaseAuditor = reAuditPreparedIOSIpa,
+  String? appDirectoryOverride,
+}) async {
+  if (!options.isReconciliation) {
+    throw const IOSPublicationException(
+      "Reconciliation requires an attempt record and release evidence.",
+      exitCode: 64,
+    );
+  }
+  final appDirectory = appDirectoryOverride == null
+      ? p.dirname(p.dirname(Platform.script.toFilePath()))
+      : p.normalize(appDirectoryOverride);
+  final repositoryRoot = Directory(
+    p.dirname(p.dirname(p.dirname(appDirectory))),
+  ).resolveSymbolicLinksSync();
+  final receiptDirectory = prepareExternalIOSReceiptDirectory(
+    options.receiptDirectory,
+    repositoryRoot: repositoryRoot,
+  );
+  final firebaseWorkingDirectory = receiptDirectory.createTempSync(
+    ".firebase-ios-reconciliation-",
+  );
+  try {
+    final prepared = await loadAndValidatePreparedIOSManifest(
+      options.manifestPath,
+      repositoryRoot: repositoryRoot,
+      environment: options.environment,
+    );
+    await releaseAuditor(prepared, environment: options.environment);
+    validateIOSPublicationVersionLedger(
+      receiptDirectory.path,
+      firebaseAppId: options.firebaseAppId,
+      bundleIdentifier: prepared.bundleIdentifier,
+      buildNumber: prepared.buildNumber,
+    );
+    final firebase = FirebaseIOSCliClient(
+      executable: resolveFirebaseIOSExecutable(options.environment),
+      projectId: options.firebaseProjectId,
+      workingDirectory: firebaseWorkingDirectory.path,
+      environment: options.environment,
+      runner: processRunner,
+    );
+    final registration = await firebase.verifyRegistration(
+      appId: options.firebaseAppId,
+      expectedBundleIdentifier: prepared.bundleIdentifier,
+    );
+    final reconciliation = validateIOSPublicationReconciliation(
+      attemptPath: options.reconciliationAttemptPath!,
+      releaseEvidencePath: options.releaseEvidencePath!,
+      receiptDirectory: receiptDirectory.path,
+      repositoryRoot: repositoryRoot,
+      prepared: prepared,
+      registration: registration,
+    );
+    final finalReceiptPath = p.join(
+      receiptDirectory.path,
+      "${prepared.releaseId}.firebase-ios-release.json",
+    );
+    if (File(finalReceiptPath).existsSync()) {
+      throw IOSPublicationException(
+        "A Firebase receipt already exists for this release: $finalReceiptPath",
+        exitCode: 73,
+      );
+    }
+
+    stdout.writeln("Guarded Firebase iOS reconciliation summary:");
+    stdout.writeln("  Release: ${prepared.releaseId}");
+    stdout.writeln(
+      "  iOS: ${prepared.bundleIdentifier} "
+      "${prepared.marketingVersion} (${prepared.buildNumber})",
+    );
+    stdout.writeln(
+      "  Firebase group: $trustedIOSTesterGroupAlias "
+      "(${registration.groupDisplayName})",
+    );
+    stdout.writeln("  Attempt: ${options.reconciliationAttemptPath}");
+    stdout.writeln("  Evidence: ${options.releaseEvidencePath}");
+    if (options.preflightOnly) {
+      stdout.writeln();
+      stdout.writeln(
+        "Reconciliation preflight passed. No receipt was written and no "
+        "Firebase mutation was performed.",
+      );
+      return null;
+    }
+
+    final hashEnvironment = sanitizedIOSPublicationEnvironment(
+      options.environment,
+    );
+    final attemptSha256 = await preparation.sha256File(
+      options.reconciliationAttemptPath!,
+      environment: hashEnvironment,
+    );
+    final evidenceSha256 = await preparation.sha256File(
+      options.releaseEvidencePath!,
+      environment: hashEnvironment,
+    );
+    final receipt = buildSuccessfulIOSPublicationReceipt(
+      prepared: prepared,
+      registration: registration,
+      releaseNotes: reconciliation.releaseNotes,
+      references: reconciliation.references,
+      publishedAt: reconciliation.releaseCreatedAt,
+      reconciliation: <String, Object?>{
+        "reconciledAt": DateTime.now().toUtc().toIso8601String(),
+        "attemptedAt": reconciliation.attemptedAt.toIso8601String(),
+        "attemptRecord": <String, Object?>{
+          "absolutePath": options.reconciliationAttemptPath!,
+          "sha256": attemptSha256,
+          "preserved": true,
+        },
+        "releaseEvidence": <String, Object?>{
+          "absolutePath": options.releaseEvidencePath!,
+          "sha256": evidenceSha256,
+          "releaseResourceName": reconciliation.releaseResourceName,
+        },
+        "method": "OFFICIAL_READ_ONLY_RELEASE_LIST_API",
+        "noUploadPerformed": true,
+      },
+    );
+    writeImmutableIOSJson(finalReceiptPath, receipt);
+    return IOSPublicationResult(
+      receiptPath: finalReceiptPath,
+      references: reconciliation.references,
+      reconciled: true,
+    );
+  } finally {
+    if (firebaseWorkingDirectory.existsSync()) {
+      firebaseWorkingDirectory.deleteSync(recursive: true);
+    }
+  }
+}
+
+IOSReconciliationEvidence validateIOSPublicationReconciliation({
+  required String attemptPath,
+  required String releaseEvidencePath,
+  required String receiptDirectory,
+  required String repositoryRoot,
+  required PreparedIOSReleaseManifest prepared,
+  required FirebaseIOSRegistration registration,
+}) {
+  final attempt = _loadImmutableIOSPublicationJson(
+    attemptPath,
+    label: "Firebase attempt record",
+    repositoryRoot: repositoryRoot,
+    requiredDirectory: receiptDirectory,
+  );
+  if (p
+              .basename(attemptPath)
+              .startsWith("${prepared.releaseId}.firebase-ios-attempt-") ==
+          false ||
+      !attemptPath.endsWith(".json")) {
+    throw const IOSPublicationException(
+      "The attempt filename does not match the prepared release.",
+    );
+  }
+  if (_requireInt(attempt, "schemaVersion") !=
+          publicationReceiptSchemaVersion ||
+      _requireString(attempt, "status") != "failed-or-partial" ||
+      _requireString(attempt, "releaseId") != prepared.releaseId) {
+    throw const IOSPublicationException(
+      "The attempt record does not match the supported partial schema.",
+    );
+  }
+  final attemptTool = _requireMap(
+    attempt["publicationTool"],
+    "attempt publicationTool",
+  );
+  final attemptToolVersion = _requireString(attemptTool, "version");
+  if (_requireString(attemptTool, "name") != publicationToolName ||
+      !const <String>{
+        "1.0.0",
+        publicationToolVersion,
+      }.contains(attemptToolVersion)) {
+    throw const IOSPublicationException(
+      "The attempt record was not produced by a supported publisher.",
+    );
+  }
+  final attemptedAt = _requireDateTime(attempt, "attemptedAt");
+  final attemptedManifest = _requireMap(
+    attempt["preparedManifest"],
+    "attempt preparedManifest",
+  );
+  final attemptedArtifact = _requireMap(
+    attempt["artifact"],
+    "attempt artifact",
+  );
+  final attemptedSource = _requireMap(attempt["source"], "attempt source");
+  final attemptedIOS = _requireMap(attempt["ios"], "attempt ios");
+  final attemptedFirebase = _requireMap(
+    attempt["firebase"],
+    "attempt firebase",
+  );
+  if (_requireString(attemptedManifest, "absolutePath") !=
+          prepared.manifestPath ||
+      _requireSha256(attemptedManifest, "sha256") != prepared.manifestSha256 ||
+      _requireString(attemptedArtifact, "absolutePath") != prepared.ipaPath ||
+      _requireSha256(attemptedArtifact, "sha256") != prepared.ipaSha256 ||
+      _requireString(attemptedSource, "commit") != prepared.commit ||
+      _requireString(attemptedSource, "commitUrl") !=
+          prepared.sourceCommitUrl ||
+      _requireString(attemptedIOS, "bundleIdentifier") !=
+          prepared.bundleIdentifier ||
+      _requireString(attemptedIOS, "marketingVersion") !=
+          prepared.marketingVersion ||
+      _requireInt(attemptedIOS, "buildNumber") != prepared.buildNumber ||
+      _requireString(attemptedIOS, "teamIdentifier") !=
+          prepared.teamIdentifier ||
+      _requireString(attemptedFirebase, "projectId") !=
+          registration.projectId ||
+      _requireString(attemptedFirebase, "appId") != registration.appId ||
+      _requireString(attemptedFirebase, "groupAlias") !=
+          trustedIOSTesterGroupAlias ||
+      _requireInt(attemptedFirebase, "exitCode") != 0) {
+    throw const IOSPublicationException(
+      "The attempt record differs from the prepared release or Firebase "
+      "registration.",
+    );
+  }
+  final firebaseOutput = _requireString(attemptedFirebase, "output");
+  Map<String, dynamic> firebaseSuccess;
+  try {
+    firebaseSuccess = _requireMap(
+      jsonDecode(firebaseOutput),
+      "Firebase JSON-only success output",
+    );
+  } on FormatException {
+    throw const IOSPublicationException(
+      "The attempt does not contain Firebase JSON-only success output.",
+    );
+  }
+  if (_requireString(firebaseSuccess, "status") != "success") {
+    throw const IOSPublicationException(
+      "The attempt does not contain Firebase JSON-only success output.",
+    );
+  }
+  final attemptedReleaseNotes = _requireString(attempt, "releaseNotes");
+
+  final evidence = _loadImmutableIOSPublicationJson(
+    releaseEvidencePath,
+    label: "Firebase release evidence",
+    repositoryRoot: repositoryRoot,
+  );
+  final releasesValue = evidence["releases"];
+  if (releasesValue is! List ||
+      releasesValue.any((release) => release is! Map)) {
+    throw const IOSPublicationException(
+      "Firebase release evidence must contain a release list.",
+    );
+  }
+  final matchingReleases = releasesValue
+      .map((release) => _requireMap(release, "Firebase release"))
+      .where(
+        (release) =>
+            release["displayVersion"] == prepared.marketingVersion &&
+            release["buildVersion"] == prepared.buildNumber.toString(),
+      )
+      .toList();
+  if (matchingReleases.length != 1) {
+    throw const IOSPublicationException(
+      "Firebase evidence must contain exactly one matching version/build.",
+    );
+  }
+  final release = matchingReleases.single;
+  final appIdMatch = RegExp(
+    r"^1:(\d+):ios:[A-Za-z0-9_-]+$",
+  ).firstMatch(registration.appId);
+  if (appIdMatch == null) {
+    throw const IOSPublicationException(
+      "The Firebase iOS App ID cannot form an API resource name.",
+    );
+  }
+  final releaseResourceName = _requireString(release, "name");
+  final expectedReleasePrefix =
+      "projects/${appIdMatch.group(1)}/apps/${registration.appId}/releases/";
+  if (!releaseResourceName.startsWith(expectedReleasePrefix) ||
+      releaseResourceName.length == expectedReleasePrefix.length) {
+    throw const IOSPublicationException(
+      "Firebase evidence identifies a different application resource.",
+    );
+  }
+  final releaseNotes = _requireMap(
+    release["releaseNotes"],
+    "Firebase releaseNotes",
+  );
+  if (_requireString(releaseNotes, "text") != attemptedReleaseNotes) {
+    throw const IOSPublicationException(
+      "Firebase release notes differ from the immutable attempt.",
+    );
+  }
+  final releaseCreatedAt = _requireDateTime(release, "createTime");
+  if (releaseCreatedAt.isBefore(
+        attemptedAt.subtract(const Duration(hours: 2)),
+      ) ||
+      releaseCreatedAt.isAfter(attemptedAt.add(const Duration(minutes: 5)))) {
+    throw const IOSPublicationException(
+      "Firebase release creation time does not match the attempt window.",
+    );
+  }
+  final references = FirebaseIOSReleaseReferences(
+    firebaseConsoleUri: _requireFirebaseReleaseUri(
+      release,
+      "firebaseConsoleUri",
+      "console.firebase.google.com",
+    ),
+    testingUri: _requireFirebaseReleaseUri(
+      release,
+      "testingUri",
+      "appdistribution.firebase.google.com",
+    ),
+    binaryDownloadUri: _requireFirebaseReleaseUri(
+      release,
+      "binaryDownloadUri",
+      "firebaseappdistribution.googleapis.com",
+    ),
+    uploadDisposition: "RECONCILED_CLI_JSON_SUCCESS",
+  );
+  return IOSReconciliationEvidence(
+    attemptedAt: attemptedAt,
+    releaseCreatedAt: releaseCreatedAt,
+    releaseNotes: attemptedReleaseNotes,
+    releaseResourceName: releaseResourceName,
+    references: references,
+  );
+}
+
+Map<String, dynamic> _loadImmutableIOSPublicationJson(
+  String path, {
+  required String label,
+  required String repositoryRoot,
+  String? requiredDirectory,
+}) {
+  if (FileSystemEntity.typeSync(path, followLinks: false) !=
+      FileSystemEntityType.file) {
+    throw IOSPublicationException(
+      "$label is missing or is not a regular file.",
+    );
+  }
+  final file = File(path);
+  final resolvedPath = file.resolveSymbolicLinksSync();
+  _requireOutsideRepository(resolvedPath, repositoryRoot);
+  requireReadOnlyIOSReleaseFile(file);
+  requirePrivateIOSReleaseDirectory(Directory(p.dirname(resolvedPath)));
+  if (requiredDirectory != null &&
+      !p.equals(p.dirname(resolvedPath), requiredDirectory)) {
+    throw IOSPublicationException(
+      "$label must remain in the receipt directory.",
+    );
+  }
+  try {
+    return _requireMap(jsonDecode(file.readAsStringSync()), label);
+  } on FormatException {
+    throw IOSPublicationException("$label is invalid JSON.");
+  }
+}
+
+String _requireFirebaseReleaseUri(
+  Map<String, dynamic> release,
+  String key,
+  String expectedHost,
+) {
+  final value = _requireString(release, key);
+  final uri = Uri.tryParse(value);
+  if (uri == null ||
+      uri.scheme != "https" ||
+      uri.host != expectedHost ||
+      uri.userInfo.isNotEmpty) {
+    throw IOSPublicationException(
+      "Firebase release evidence contains an invalid '$key'.",
+    );
+  }
+  return uri.toString();
 }
 
 Directory prepareExternalIOSReceiptDirectory(
@@ -1345,6 +1808,8 @@ Map<String, Object?> buildSuccessfulIOSPublicationReceipt({
   required FirebaseIOSRegistration registration,
   required String releaseNotes,
   required FirebaseIOSReleaseReferences references,
+  DateTime? publishedAt,
+  Map<String, Object?>? reconciliation,
 }) => <String, Object?>{
   "schemaVersion": publicationReceiptSchemaVersion,
   "publicationTool": <String, Object?>{
@@ -1352,7 +1817,7 @@ Map<String, Object?> buildSuccessfulIOSPublicationReceipt({
     "version": publicationToolVersion,
   },
   "status": "published",
-  "publishedAt": DateTime.now().toUtc().toIso8601String(),
+  "publishedAt": (publishedAt ?? DateTime.now()).toUtc().toIso8601String(),
   "releaseId": prepared.releaseId,
   "preparedManifest": <String, Object?>{
     "absolutePath": prepared.manifestPath,
@@ -1403,6 +1868,7 @@ Map<String, Object?> buildSuccessfulIOSPublicationReceipt({
         "Firebase CLI reports that this link expires in 1 hour.",
   },
   "releaseNotes": releaseNotes,
+  "reconciliation": ?reconciliation,
 };
 
 String writeFailedIOSPublicationAttempt(

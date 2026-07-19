@@ -264,6 +264,16 @@ accepted the binary before a later step failed. Inspect the attempt record and
 Firebase console before any retry. Do not assume a nonzero exit or missing CLI
 reference means no mutation.
 
+For an exit-`0` JSON-only success, save a private mode-`0444` response from the
+official read-only App Distribution release-list API. Set
+`ENTE_FIREBASE_IOS_ATTEMPT` and `ENTE_FIREBASE_IOS_RELEASE_EVIDENCE` to the
+absolute attempt/evidence paths, run the publisher with `--preflight-only`,
+then run it once without that flag. This reconciliation path requires one
+exact app/version/build/notes/timestamp/reference match, preserves both input
+records, performs no Firebase mutation, and writes the ordinary success
+receipt. Never reconcile console screenshots, copied URLs, writable JSON, or
+ambiguous release lists.
+
 ## 4. Authorize and onboard an iPhone
 
 ### 4.1 Accept Firebase and register the device
@@ -478,7 +488,7 @@ not remote kill switches; private-server access must be revoked separately.
 |---|---|
 | Prepared IPA or manifest changed | Stop. Discard the pair and prepare again from clean pushed source. Do not make it writable or repair it. |
 | Wrong Firebase app, bundle, or group | Stop before confirmation. Correct the local inputs or registration; never upload to see whether Firebase accepts it. |
-| Firebase failure after upload started | Preserve the partial-attempt receipt, inspect the console, and reconcile whether the release and group distribution exist before retrying. |
+| Firebase failure after upload started | Preserve the partial-attempt receipt and inspect Firebase before any retry. For exit-`0` JSON-only success, capture the official read-only release-list response and use guarded no-upload reconciliation; never upload the same release again. |
 | Invitation expired or was accepted with the wrong Google account | Remove stale tester access if necessary, resend the invitation, and privately confirm the intended Google identity before device registration. |
 | Tester sees “device registered” but cannot download | Add the collected device to Apple, refresh the Ad Hoc profile, increase the build number, prepare, and publish the new IPA. |
 | “Unable to Install” or integrity/profile error | Confirm the exact iPhone is enabled in Apple and embedded in the IPA's unexpired profile; then rebuild through the guarded path. Do not manually re-sign the IPA. |
