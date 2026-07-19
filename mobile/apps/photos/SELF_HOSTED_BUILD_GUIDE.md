@@ -222,6 +222,22 @@ after the upload starts, the command instead preserves a read-only
 `.firebase-attempt-*.json` recovery record and requires the operator to inspect
 Firebase before retrying.
 
+For an exit-`0` JSON-only attempt that omitted release references, never upload
+again. Save an immutable response from Firebase's official read-only
+`projects.apps.releases.list` API in a private external directory, then set:
+
+```sh
+export ENTE_FIREBASE_ANDROID_ATTEMPT="/absolute/private/path/firebase-attempt.json"
+export ENTE_FIREBASE_ANDROID_RELEASE_EVIDENCE="/absolute/private/path/firebase-release-list.json"
+```
+
+Run the same publisher first with `--preflight-only`, then without it. This
+mode re-audits the APK and Firebase bindings, requires one exact official
+app/version/build/notes/time/reference match, and writes the normal immutable
+success receipt with evidence hashes and `noUploadPerformed: true`. It does not
+prompt, upload, notify testers, or delete either evidence file. Normal future
+publications request the reference-bearing Firebase CLI output directly.
+
 Use a locally authenticated Firebase CLI session. Legacy `FIREBASE_TOKEN`,
 Google credential-file variables, and Android signing/password variables are
 removed from every inspection and Firebase subprocess.

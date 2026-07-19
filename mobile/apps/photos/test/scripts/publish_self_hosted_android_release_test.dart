@@ -27,6 +27,24 @@ void main() {
     expect(options.firebaseAppId, "1:123:android:opaque");
     expect(options.releaseNotesFile, "/tmp/notes.txt");
     expect(options.preflightOnly, isTrue);
+
+    final reconciliation = PublicationOptions.parse(const <String>[
+      "--manifest=/tmp/release.manifest.json",
+      "--receipt-dir=/tmp/firebase-receipts",
+      "--firebase-project=example-project",
+      "--firebase-app=1:123:android:opaque",
+      "--reconcile-attempt=/tmp/firebase-receipts/release-attempt.json",
+      "--release-evidence=/tmp/firebase-evidence/releases.json",
+    ], environment: const <String, String>{});
+    expect(reconciliation.isReconciliation, isTrue);
+    expect(
+      reconciliation.reconciliationAttemptPath,
+      "/tmp/firebase-receipts/release-attempt.json",
+    );
+    expect(
+      reconciliation.releaseEvidencePath,
+      "/tmp/firebase-evidence/releases.json",
+    );
   });
 
   test("reads publication inputs from the environment", () {
@@ -173,7 +191,6 @@ void main() {
         "/tmp/notes.txt",
         "--project",
         "example-project",
-        "--json",
         "--non-interactive",
       ]);
       expect(upload.arguments, isNot(contains("--testers")));
@@ -333,6 +350,176 @@ void main() {
     }
   });
 
+  test(
+    "reconciliation preflight validates without upload or receipt",
+    () async {
+      final fixture = await _PublisherFixture.create();
+      try {
+        final inputs = await fixture.writeReconciliationInputs();
+        final calls = <_ProcessCall>[];
+        final result = await reconcileSelfHostedAndroidRelease(
+          fixture.options(
+            preflightOnly: true,
+            reconciliationAttemptPath: inputs.attemptPath,
+            releaseEvidencePath: inputs.evidencePath,
+          ),
+          appDirectoryOverride: fixture.appDirectory,
+          processRunner: _firebaseRunner(calls),
+          releaseAuditor: (prepared, {required environment}) async {},
+        );
+        expect(result, isNull);
+        expect(calls, hasLength(2));
+        expect(
+          calls.any(
+            (call) => call.arguments.first == "appdistribution:distribute",
+          ),
+          isFalse,
+        );
+        expect(
+          fixture.receiptDirectory
+              .listSync(followLinks: false)
+              .whereType<File>()
+              .where((file) => file.path.endsWith(".firebase-release.json")),
+          isEmpty,
+        );
+        expect(File(inputs.attemptPath).existsSync(), isTrue);
+        expect(File(inputs.evidencePath).existsSync(), isTrue);
+      } finally {
+        fixture.dispose();
+      }
+    },
+  );
+
+  test("reconciles JSON-only success without a second upload", () async {
+    final fixture = await _PublisherFixture.create();
+    try {
+      final inputs = await fixture.writeReconciliationInputs();
+      final calls = <_ProcessCall>[];
+      final result = await reconcileSelfHostedAndroidRelease(
+        fixture.options(
+          reconciliationAttemptPath: inputs.attemptPath,
+          releaseEvidencePath: inputs.evidencePath,
+        ),
+        appDirectoryOverride: fixture.appDirectory,
+        processRunner: _firebaseRunner(calls),
+        releaseAuditor: (prepared, {required environment}) async {},
+      );
+      expect(result, isNotNull);
+      expect(result!.reconciled, isTrue);
+      expect(
+        result.references.uploadDisposition,
+        "RECONCILED_CLI_JSON_SUCCESS",
+      );
+      expect(
+        calls.any(
+          (call) => call.arguments.first == "appdistribution:distribute",
+        ),
+        isFalse,
+      );
+      final receipt = File(result.receiptPath);
+      expect(receipt.statSync().mode & 0x1ff, 0x124);
+      final value = jsonDecode(receipt.readAsStringSync());
+      expect(value["status"], "published");
+      expect(value["reconciliation"]["noUploadPerformed"], isTrue);
+      expect(
+        value["firebase"]["uploadDisposition"],
+        "RECONCILED_CLI_JSON_SUCCESS",
+      );
+      expect(File(inputs.attemptPath).existsSync(), isTrue);
+      expect(File(inputs.evidencePath).existsSync(), isTrue);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("reconciliation rejects ambiguous official release evidence", () async {
+    final fixture = await _PublisherFixture.create();
+    try {
+      final inputs = await fixture.writeReconciliationInputs();
+      final evidence = File(inputs.evidencePath);
+      Process.runSync("chmod", ["0644", evidence.path]);
+      final value = jsonDecode(evidence.readAsStringSync());
+      (value["releases"] as List<Object?>).add(
+        Map<String, Object?>.from(
+          (value["releases"] as List<Object?>).single! as Map,
+        ),
+      );
+      evidence.writeAsStringSync(jsonEncode(value));
+      Process.runSync("chmod", ["0444", evidence.path]);
+
+      await expectLater(
+        reconcileSelfHostedAndroidRelease(
+          fixture.options(
+            reconciliationAttemptPath: inputs.attemptPath,
+            releaseEvidencePath: inputs.evidencePath,
+          ),
+          appDirectoryOverride: fixture.appDirectory,
+          processRunner: _firebaseRunner(<_ProcessCall>[]),
+          releaseAuditor: (prepared, {required environment}) async {},
+        ),
+        throwsA(isA<PublicationException>()),
+      );
+      expect(
+        fixture.receiptDirectory
+            .listSync(followLinks: false)
+            .whereType<File>()
+            .where((file) => file.path.endsWith(".firebase-release.json")),
+        isEmpty,
+      );
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("reconciliation rejects mismatched official release bindings", () async {
+    final mutations = <void Function(Map<String, dynamic>)>[
+      (release) => release["name"] =
+          "projects/999/apps/1:999:android:other/releases/foreign",
+      (release) => release["displayVersion"] = "9.9.9",
+      (release) =>
+          release["releaseNotes"] = <String, String>{"text": "different notes"},
+      (release) => release["createTime"] = DateTime.now()
+          .toUtc()
+          .subtract(const Duration(hours: 3))
+          .toIso8601String(),
+      (release) =>
+          release["binaryDownloadUri"] = "https://example.invalid/binary",
+    ];
+    for (final mutate in mutations) {
+      final fixture = await _PublisherFixture.create();
+      try {
+        final inputs = await fixture.writeReconciliationInputs();
+        final evidence = File(inputs.evidencePath);
+        Process.runSync("chmod", ["0644", evidence.path]);
+        final value = Map<String, dynamic>.from(
+          jsonDecode(evidence.readAsStringSync()) as Map,
+        );
+        final release = Map<String, dynamic>.from(
+          (value["releases"] as List<Object?>).single! as Map,
+        );
+        mutate(release);
+        value["releases"] = <Object?>[release];
+        evidence.writeAsStringSync(jsonEncode(value));
+        Process.runSync("chmod", ["0444", evidence.path]);
+
+        await expectLater(
+          reconcileSelfHostedAndroidRelease(
+            fixture.options(
+              reconciliationAttemptPath: inputs.attemptPath,
+              releaseEvidencePath: inputs.evidencePath,
+            ),
+            appDirectoryOverride: fixture.appDirectory,
+            processRunner: _firebaseRunner(<_ProcessCall>[]),
+            releaseAuditor: (prepared, {required environment}) async {},
+          ),
+          throwsA(isA<PublicationException>()),
+        );
+      } finally {
+        fixture.dispose();
+      }
+    }
+  });
+
   test("rejects a receipt directory inside the repository", () {
     final repository = Directory.systemTemp.createTempSync(
       "ente-firebase-repository-test-",
@@ -423,6 +610,224 @@ Map<String, dynamic> firebaseGroupsResponse() => <String, dynamic>{
     ],
   },
 };
+
+PublicationProcessRunner _firebaseRunner(List<_ProcessCall> calls) {
+  return (
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+    Map<String, String>? environment,
+  }) async {
+    calls.add(
+      _ProcessCall(
+        executable,
+        List<String>.from(arguments),
+        workingDirectory,
+        Map<String, String>.from(environment ?? const {}),
+      ),
+    );
+    if (arguments.first == "apps:list") {
+      return ProcessResult(1, 0, jsonEncode(firebaseAppsResponse()), "");
+    }
+    if (arguments.first == "appdistribution:groups:list") {
+      return ProcessResult(2, 0, jsonEncode(firebaseGroupsResponse()), "");
+    }
+    return ProcessResult(3, 0, "", "unexpected mutation");
+  };
+}
+
+class _PublisherFixture {
+  _PublisherFixture({
+    required this.root,
+    required this.appDirectory,
+    required this.releaseDirectory,
+    required this.receiptDirectory,
+    required this.apkPath,
+    required this.manifestPath,
+    required this.environment,
+  });
+
+  static Future<_PublisherFixture> create() async {
+    final root = Directory.systemTemp.createTempSync(
+      "ente-android-publisher-fixture-",
+    );
+    final repositoryRoot = p.join(root.path, "repository");
+    final appDirectory = p.join(repositoryRoot, "mobile", "apps", "photos");
+    Directory(appDirectory).createSync(recursive: true);
+    final releaseDirectory = Directory(p.join(root.path, "prepared"))
+      ..createSync();
+    final receiptDirectory = Directory(p.join(root.path, "receipts"))
+      ..createSync();
+    Process.runSync("chmod", [
+      "0700",
+      releaseDirectory.path,
+      receiptDirectory.path,
+    ]);
+
+    final releaseId = preparedRelease().releaseId;
+    final apkPath = p.join(releaseDirectory.path, "$releaseId.apk");
+    File(apkPath).writeAsBytesSync(utf8.encode("fixture APK bytes"));
+    final apkSha256 = await preparation.sha256File(apkPath);
+    final manifestPath = p.join(
+      releaseDirectory.path,
+      "$releaseId.manifest.json",
+    );
+    final manifest = _manifestValue(
+      apkPath: apkPath,
+      apkSha256: apkSha256,
+      apkSizeBytes: File(apkPath).lengthSync(),
+    );
+    File(manifestPath).writeAsStringSync(
+      "${const JsonEncoder.withIndent("  ").convert(manifest)}\n",
+      flush: true,
+    );
+    Process.runSync("chmod", ["0444", apkPath, manifestPath]);
+
+    final firebaseCli = File(p.join(root.path, "firebase"))
+      ..writeAsStringSync("#!/bin/bash\nexit 99\n");
+    Process.runSync("chmod", ["0700", firebaseCli.path]);
+    final buildTools = Directory(
+      p.join(root.path, "android-sdk", "build-tools", "fixture"),
+    )..createSync(recursive: true);
+    for (final name in const <String>["aapt2", "apksigner"]) {
+      File(p.join(buildTools.path, name)).writeAsStringSync("");
+    }
+    final environment = <String, String>{
+      ...Platform.environment,
+      "FIREBASE_CLI": firebaseCli.path,
+      "ANDROID_HOME": p.join(root.path, "android-sdk"),
+    };
+    return _PublisherFixture(
+      root: root,
+      appDirectory: appDirectory,
+      releaseDirectory: releaseDirectory,
+      receiptDirectory: receiptDirectory,
+      apkPath: apkPath,
+      manifestPath: manifestPath,
+      environment: environment,
+    );
+  }
+
+  final Directory root;
+  final String appDirectory;
+  final Directory releaseDirectory;
+  final Directory receiptDirectory;
+  final String apkPath;
+  final String manifestPath;
+  final Map<String, String> environment;
+
+  PublicationOptions options({
+    bool preflightOnly = false,
+    String? reconciliationAttemptPath,
+    String? releaseEvidencePath,
+  }) => PublicationOptions(
+    manifestPath: manifestPath,
+    receiptDirectory: receiptDirectory.path,
+    firebaseProjectId: "example-project",
+    firebaseAppId: "1:123:android:opaque",
+    environment: environment,
+    preflightOnly: preflightOnly,
+    reconciliationAttemptPath: reconciliationAttemptPath,
+    releaseEvidencePath: releaseEvidencePath,
+  );
+
+  Future<({String attemptPath, String evidencePath})>
+  writeReconciliationInputs() async {
+    final prepared = await loadAndValidatePreparedManifest(
+      manifestPath,
+      repositoryRoot: p.dirname(p.dirname(p.dirname(appDirectory))),
+      environment: environment,
+    );
+    final releaseNotes = buildFirebaseReleaseNotes(prepared);
+    final attemptPath = writeFailedPublicationAttempt(
+      receiptDirectory.path,
+      prepared: prepared,
+      registration: firebaseRegistration(),
+      releaseNotes: releaseNotes,
+      firebaseExitCode: 0,
+      firebaseOutput: jsonEncode(<String, String>{"status": "success"}),
+    );
+    final evidenceDirectory = Directory(p.join(root.path, "evidence"))
+      ..createSync();
+    Process.runSync("chmod", ["0700", evidenceDirectory.path]);
+    final evidencePath = p.join(evidenceDirectory.path, "releases.json");
+    final evidence = <String, Object?>{
+      "releases": <Object?>[
+        <String, Object?>{
+          "name":
+              "projects/123/apps/1:123:android:opaque/releases/official-release",
+          "releaseNotes": <String, String>{"text": releaseNotes},
+          "displayVersion": prepared.versionName,
+          "buildVersion": prepared.versionCode.toString(),
+          "createTime": DateTime.now()
+              .toUtc()
+              .subtract(const Duration(seconds: 30))
+              .toIso8601String(),
+          "firebaseConsoleUri":
+              "https://console.firebase.google.com/project/example/release/abc",
+          "testingUri":
+              "https://appdistribution.firebase.google.com/testerapps/abc",
+          "binaryDownloadUri":
+              "https://firebaseappdistribution.googleapis.com/binary?temporary=1",
+        },
+      ],
+    };
+    File(evidencePath).writeAsStringSync(
+      "${const JsonEncoder.withIndent("  ").convert(evidence)}\n",
+      flush: true,
+    );
+    Process.runSync("chmod", ["0444", evidencePath]);
+    return (attemptPath: attemptPath, evidencePath: evidencePath);
+  }
+
+  void dispose() {
+    if (root.existsSync()) {
+      root.deleteSync(recursive: true);
+    }
+  }
+}
+
+Map<String, Object?> _manifestValue({
+  required String apkPath,
+  required String apkSha256,
+  required int apkSizeBytes,
+}) {
+  final prepared = preparedRelease();
+  return <String, Object?>{
+    "schemaVersion": preparation.releaseManifestSchemaVersion,
+    "preparationTool": <String, Object?>{
+      "name": preparation.preparationToolName,
+      "version": preparation.preparationToolVersion,
+    },
+    "releaseId": prepared.releaseId,
+    "artifact": <String, Object?>{
+      "fileName": "${prepared.releaseId}.apk",
+      "absolutePath": apkPath,
+      "sha256": apkSha256,
+      "sizeBytes": apkSizeBytes,
+    },
+    "source": <String, Object?>{
+      "commit": prepared.commit,
+      "remote": prepared.sourceRemote,
+      "commitUrl": prepared.sourceCommitUrl,
+      "worktreeClean": true,
+    },
+    "android": <String, Object?>{
+      "packageName": prepared.packageName,
+      "versionName": prepared.versionName,
+      "versionCode": prepared.versionCode,
+      "buildType": "release",
+      "debuggable": false,
+      "minSdk": prepared.minSdk,
+      "targetSdk": prepared.targetSdk,
+      "compileSdk": prepared.compileSdk,
+      "abis": prepared.abis.toList()..sort(),
+      "compiledDefaultEndpoint": prepared.compiledDefaultEndpoint,
+      "signingCertificateSha256": prepared.signingCertificateSha256,
+      "signatureSchemes": prepared.signatureSchemes,
+    },
+  };
+}
 
 PreparedReleaseManifest preparedRelease({int versionCode = 2158}) {
   const commit = "0123456789abcdef0123456789abcdef01234567";

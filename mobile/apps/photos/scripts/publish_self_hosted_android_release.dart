@@ -6,7 +6,7 @@ import "package:path/path.dart" as p;
 import "prepare_self_hosted_android_release.dart" as preparation;
 
 const publicationToolName = "ente-self-hosted-android-firebase-publisher";
-const publicationToolVersion = "1.0.0";
+const publicationToolVersion = "1.1.0";
 const publicationReceiptSchemaVersion = 1;
 const trustedTesterGroupAlias = "trusted-testers";
 const _maximumReleaseNotesBytes = 10000;
@@ -22,9 +22,20 @@ Usage:
     --firebase-project your-project-id \\
     --firebase-app 1:1234567890:android:opaque-id
 
+Reconcile one successful JSON-only Firebase attempt without uploading:
+  ./scripts/publish_self_hosted_android_release.sh \\
+    --manifest /absolute/path/release.manifest.json \\
+    --receipt-dir /absolute/path/firebase-receipts \\
+    --firebase-project your-project-id \\
+    --firebase-app 1:1234567890:android:opaque-id \\
+    --reconcile-attempt /absolute/path/firebase-attempt.json \\
+    --release-evidence /absolute/path/firebase-release-list.json
+
 Options:
   --release-notes-file PATH  Append operator notes to the generated audit notes.
   --preflight-only           Verify everything without prompting or uploading.
+  --reconcile-attempt PATH   Immutable JSON-only success attempt to reconcile.
+  --release-evidence PATH    Immutable official release-list API response.
   -h, --help                 Show this help.
 
 Environment alternatives:
@@ -32,10 +43,13 @@ Environment alternatives:
   ENTE_FIREBASE_RELEASE_RECEIPT_DIR
   ENTE_FIREBASE_PROJECT_ID
   ENTE_FIREBASE_ANDROID_APP_ID
+  ENTE_FIREBASE_ANDROID_ATTEMPT
+  ENTE_FIREBASE_ANDROID_RELEASE_EVIDENCE
   FIREBASE_CLI                       Firebase executable; otherwise use PATH.
 
 The Firebase group is pinned to '$trustedTesterGroupAlias'. Publishing requires
 typing the exact release-specific confirmation shown after all checks pass.
+Reconciliation never uploads and preserves its attempt/evidence inputs.
 """;
 
 Future<void> main(List<String> arguments) async {
@@ -49,12 +63,18 @@ Future<void> main(List<String> arguments) async {
       return;
     }
 
-    final result = await publishSelfHostedAndroidRelease(options);
+    final result = options.isReconciliation
+        ? await reconcileSelfHostedAndroidRelease(options)
+        : await publishSelfHostedAndroidRelease(options);
     if (result == null) {
       return;
     }
     stdout.writeln();
-    stdout.writeln("Firebase publication completed:");
+    stdout.writeln(
+      result.reconciled
+          ? "Firebase Android publication reconciliation completed:"
+          : "Firebase publication completed:",
+    );
     stdout.writeln("  Receipt: ${result.receiptPath}");
     stdout.writeln("  Console: ${result.references.firebaseConsoleUri}");
     stdout.writeln("  Tester: ${result.references.testingUri}");
@@ -78,6 +98,8 @@ class PublicationOptions {
     required this.firebaseAppId,
     required this.environment,
     this.releaseNotesFile,
+    this.reconciliationAttemptPath,
+    this.releaseEvidencePath,
     this.preflightOnly = false,
     this.showHelp = false,
   });
@@ -103,6 +125,8 @@ class PublicationOptions {
     String? firebaseProjectId;
     String? firebaseAppId;
     String? releaseNotesFile;
+    String? reconciliationAttemptPath;
+    String? releaseEvidencePath;
     var preflightOnly = false;
 
     for (var index = 0; index < arguments.length; index++) {
@@ -136,6 +160,16 @@ class PublicationOptions {
         releaseNotesFile = argument.substring("--release-notes-file=".length);
       } else if (argument == "--preflight-only") {
         preflightOnly = true;
+      } else if (argument == "--reconcile-attempt") {
+        reconciliationAttemptPath = readValue(argument);
+      } else if (argument.startsWith("--reconcile-attempt=")) {
+        reconciliationAttemptPath = argument.substring(
+          "--reconcile-attempt=".length,
+        );
+      } else if (argument == "--release-evidence") {
+        releaseEvidencePath = readValue(argument);
+      } else if (argument.startsWith("--release-evidence=")) {
+        releaseEvidencePath = argument.substring("--release-evidence=".length);
       } else {
         throw PublicationException(
           "Unknown argument '$argument'.\n\n$_usage",
@@ -148,6 +182,9 @@ class PublicationOptions {
     receiptDirectory ??= environment["ENTE_FIREBASE_RELEASE_RECEIPT_DIR"];
     firebaseProjectId ??= environment["ENTE_FIREBASE_PROJECT_ID"];
     firebaseAppId ??= environment["ENTE_FIREBASE_ANDROID_APP_ID"];
+    reconciliationAttemptPath ??= environment["ENTE_FIREBASE_ANDROID_ATTEMPT"];
+    releaseEvidencePath ??=
+        environment["ENTE_FIREBASE_ANDROID_RELEASE_EVIDENCE"];
 
     final requiredValues = <String, String?>{
       "--manifest or ENTE_ANDROID_RELEASE_MANIFEST": manifestPath,
@@ -184,6 +221,33 @@ class PublicationOptions {
         );
       }
     }
+    final hasAttempt = reconciliationAttemptPath != null;
+    final hasEvidence = releaseEvidencePath != null;
+    if (hasAttempt != hasEvidence) {
+      throw const PublicationException(
+        "Reconciliation requires both --reconcile-attempt and "
+        "--release-evidence.",
+        exitCode: 64,
+      );
+    }
+    if (hasAttempt) {
+      if (releaseNotesFile != null) {
+        throw const PublicationException(
+          "Reconciliation uses the immutable attempted release notes and "
+          "does not accept --release-notes-file.",
+          exitCode: 64,
+        );
+      }
+      reconciliationAttemptPath = p.normalize(reconciliationAttemptPath);
+      releaseEvidencePath = p.normalize(releaseEvidencePath!);
+      if (!p.isAbsolute(reconciliationAttemptPath) ||
+          !p.isAbsolute(releaseEvidencePath)) {
+        throw const PublicationException(
+          "Reconciliation attempt and evidence paths must be absolute.",
+          exitCode: 64,
+        );
+      }
+    }
     if (firebaseProjectId!.startsWith("-") || firebaseAppId!.startsWith("-")) {
       throw const PublicationException(
         "Firebase identifiers cannot start with '-'.",
@@ -197,6 +261,8 @@ class PublicationOptions {
       firebaseProjectId: firebaseProjectId.trim(),
       firebaseAppId: firebaseAppId.trim(),
       releaseNotesFile: releaseNotesFile,
+      reconciliationAttemptPath: reconciliationAttemptPath,
+      releaseEvidencePath: releaseEvidencePath,
       preflightOnly: preflightOnly,
       environment: Map<String, String>.unmodifiable(environment),
     );
@@ -207,9 +273,13 @@ class PublicationOptions {
   final String firebaseProjectId;
   final String firebaseAppId;
   final String? releaseNotesFile;
+  final String? reconciliationAttemptPath;
+  final String? releaseEvidencePath;
   final bool preflightOnly;
   final bool showHelp;
   final Map<String, String> environment;
+
+  bool get isReconciliation => reconciliationAttemptPath != null;
 }
 
 class PublicationException implements Exception {
@@ -300,11 +370,35 @@ class PublicationResult {
   const PublicationResult({
     required this.receiptPath,
     required this.references,
+    this.reconciled = false,
   });
 
   final String receiptPath;
   final FirebaseReleaseReferences references;
+  final bool reconciled;
 }
+
+class ReconciliationEvidence {
+  const ReconciliationEvidence({
+    required this.attemptedAt,
+    required this.releaseCreatedAt,
+    required this.releaseNotes,
+    required this.releaseResourceName,
+    required this.references,
+  });
+
+  final DateTime attemptedAt;
+  final DateTime releaseCreatedAt;
+  final String releaseNotes;
+  final String releaseResourceName;
+  final FirebaseReleaseReferences references;
+}
+
+typedef PreparedReleaseAuditor =
+    Future<void> Function(
+      PreparedReleaseManifest prepared, {
+      required Map<String, String> environment,
+    });
 
 typedef PublicationProcessRunner =
     Future<ProcessResult> Function(
@@ -324,6 +418,7 @@ Future<ProcessResult> runPublicationProcess(
   arguments,
   workingDirectory: workingDirectory,
   environment: environment,
+  includeParentEnvironment: false,
   stdoutEncoding: utf8,
   stderrEncoding: utf8,
 );
@@ -400,7 +495,6 @@ class FirebaseCliClient {
       releaseNotesFile,
       "--project",
       projectId,
-      "--json",
       "--non-interactive",
     ],
     workingDirectory: workingDirectory,
@@ -615,6 +709,387 @@ Future<PublicationResult?> publishSelfHostedAndroidRelease(
   }
 }
 
+Future<PublicationResult?> reconcileSelfHostedAndroidRelease(
+  PublicationOptions options, {
+  PublicationProcessRunner processRunner = runPublicationProcess,
+  PreparedReleaseAuditor releaseAuditor = reAuditPreparedApk,
+  String? appDirectoryOverride,
+}) async {
+  if (!options.isReconciliation) {
+    throw const PublicationException(
+      "Reconciliation requires an attempt record and release evidence.",
+      exitCode: 64,
+    );
+  }
+  final appDirectory = appDirectoryOverride == null
+      ? p.dirname(p.dirname(Platform.script.toFilePath()))
+      : p.normalize(appDirectoryOverride);
+  final repositoryRoot = Directory(
+    p.dirname(p.dirname(p.dirname(appDirectory))),
+  ).resolveSymbolicLinksSync();
+  final receiptDirectory = prepareExternalReceiptDirectory(
+    options.receiptDirectory,
+    repositoryRoot: repositoryRoot,
+  );
+  final firebaseWorkingDirectory = receiptDirectory.createTempSync(
+    ".firebase-android-reconciliation-",
+  );
+  try {
+    final prepared = await loadAndValidatePreparedManifest(
+      options.manifestPath,
+      repositoryRoot: repositoryRoot,
+      environment: options.environment,
+    );
+    await releaseAuditor(prepared, environment: options.environment);
+    validatePublicationVersionLedger(
+      receiptDirectory.path,
+      firebaseAppId: options.firebaseAppId,
+      packageName: prepared.packageName,
+      versionCode: prepared.versionCode,
+    );
+    final firebase = FirebaseCliClient(
+      executable: resolveFirebaseExecutable(options.environment),
+      projectId: options.firebaseProjectId,
+      workingDirectory: firebaseWorkingDirectory.path,
+      environment: options.environment,
+      runner: processRunner,
+    );
+    final registration = await firebase.verifyRegistration(
+      appId: options.firebaseAppId,
+      expectedPackageName: prepared.packageName,
+    );
+    final reconciliation = validatePublicationReconciliation(
+      attemptPath: options.reconciliationAttemptPath!,
+      releaseEvidencePath: options.releaseEvidencePath!,
+      receiptDirectory: receiptDirectory.path,
+      repositoryRoot: repositoryRoot,
+      prepared: prepared,
+      registration: registration,
+    );
+    final finalReceiptPath = p.join(
+      receiptDirectory.path,
+      "${prepared.releaseId}.firebase-release.json",
+    );
+    if (File(finalReceiptPath).existsSync()) {
+      throw PublicationException(
+        "A Firebase receipt already exists for this release: $finalReceiptPath",
+        exitCode: 73,
+      );
+    }
+
+    stdout.writeln("Guarded Firebase Android reconciliation summary:");
+    stdout.writeln("  Release: ${prepared.releaseId}");
+    stdout.writeln(
+      "  Android: ${prepared.packageName} "
+      "${prepared.versionName} (${prepared.versionCode})",
+    );
+    stdout.writeln(
+      "  Firebase group: $trustedTesterGroupAlias "
+      "(${registration.groupDisplayName})",
+    );
+    stdout.writeln("  Attempt: ${options.reconciliationAttemptPath}");
+    stdout.writeln("  Evidence: ${options.releaseEvidencePath}");
+    if (options.preflightOnly) {
+      stdout.writeln();
+      stdout.writeln(
+        "Reconciliation preflight passed. No receipt was written and no "
+        "Firebase mutation was performed.",
+      );
+      return null;
+    }
+
+    final hashEnvironment = sanitizedPublicationEnvironment(
+      options.environment,
+    );
+    final attemptSha256 = await preparation.sha256File(
+      options.reconciliationAttemptPath!,
+      shasum: preparation.ReleaseToolPaths.fromEnvironment(
+        options.environment,
+      ).shasum,
+      environment: hashEnvironment,
+    );
+    final evidenceSha256 = await preparation.sha256File(
+      options.releaseEvidencePath!,
+      shasum: preparation.ReleaseToolPaths.fromEnvironment(
+        options.environment,
+      ).shasum,
+      environment: hashEnvironment,
+    );
+    final receipt = buildSuccessfulPublicationReceipt(
+      prepared: prepared,
+      registration: registration,
+      releaseNotes: reconciliation.releaseNotes,
+      references: reconciliation.references,
+      publishedAt: reconciliation.releaseCreatedAt,
+      reconciliation: <String, Object?>{
+        "reconciledAt": DateTime.now().toUtc().toIso8601String(),
+        "attemptedAt": reconciliation.attemptedAt.toIso8601String(),
+        "attemptRecord": <String, Object?>{
+          "absolutePath": options.reconciliationAttemptPath!,
+          "sha256": attemptSha256,
+          "preserved": true,
+        },
+        "releaseEvidence": <String, Object?>{
+          "absolutePath": options.releaseEvidencePath!,
+          "sha256": evidenceSha256,
+          "releaseResourceName": reconciliation.releaseResourceName,
+        },
+        "method": "OFFICIAL_READ_ONLY_RELEASE_LIST_API",
+        "noUploadPerformed": true,
+      },
+    );
+    writeImmutableJson(finalReceiptPath, receipt);
+    return PublicationResult(
+      receiptPath: finalReceiptPath,
+      references: reconciliation.references,
+      reconciled: true,
+    );
+  } finally {
+    if (firebaseWorkingDirectory.existsSync()) {
+      firebaseWorkingDirectory.deleteSync(recursive: true);
+    }
+  }
+}
+
+ReconciliationEvidence validatePublicationReconciliation({
+  required String attemptPath,
+  required String releaseEvidencePath,
+  required String receiptDirectory,
+  required String repositoryRoot,
+  required PreparedReleaseManifest prepared,
+  required FirebaseRegistration registration,
+}) {
+  final attempt = _loadImmutablePublicationJson(
+    attemptPath,
+    label: "Firebase attempt record",
+    repositoryRoot: repositoryRoot,
+    requiredDirectory: receiptDirectory,
+  );
+  if (!p
+          .basename(attemptPath)
+          .startsWith("${prepared.releaseId}.firebase-attempt-") ||
+      !attemptPath.endsWith(".json")) {
+    throw const PublicationException(
+      "The attempt filename does not match the prepared release.",
+    );
+  }
+  if (_requireInt(attempt, "schemaVersion") !=
+          publicationReceiptSchemaVersion ||
+      _requireString(attempt, "status") != "failed-or-partial" ||
+      _requireString(attempt, "releaseId") != prepared.releaseId) {
+    throw const PublicationException(
+      "The attempt record does not match the supported partial schema.",
+    );
+  }
+  final attemptTool = _requireMap(
+    attempt["publicationTool"],
+    "attempt publicationTool",
+  );
+  final attemptToolVersion = _requireString(attemptTool, "version");
+  if (_requireString(attemptTool, "name") != publicationToolName ||
+      !const <String>{
+        "1.0.0",
+        publicationToolVersion,
+      }.contains(attemptToolVersion)) {
+    throw const PublicationException(
+      "The attempt record was not produced by a supported publisher.",
+    );
+  }
+  final attemptedAt = _requireDateTime(attempt, "attemptedAt");
+  if (attemptToolVersion != "1.0.0") {
+    final attemptedManifest = _requireMap(
+      attempt["preparedManifest"],
+      "attempt preparedManifest",
+    );
+    if (_requireString(attemptedManifest, "absolutePath") !=
+            prepared.manifestPath ||
+        _requireSha256(attemptedManifest, "sha256") !=
+            prepared.manifestSha256) {
+      throw const PublicationException(
+        "The attempt manifest differs from the prepared release.",
+      );
+    }
+  }
+  final attemptedArtifact = _requireMap(
+    attempt["artifact"],
+    "attempt artifact",
+  );
+  final attemptedSource = _requireMap(attempt["source"], "attempt source");
+  final attemptedAndroid = _requireMap(attempt["android"], "attempt android");
+  final attemptedFirebase = _requireMap(
+    attempt["firebase"],
+    "attempt firebase",
+  );
+  if (_requireString(attemptedArtifact, "absolutePath") != prepared.apkPath ||
+      _requireSha256(attemptedArtifact, "sha256") != prepared.apkSha256 ||
+      _requireString(attemptedSource, "commit") != prepared.commit ||
+      _requireString(attemptedSource, "commitUrl") !=
+          prepared.sourceCommitUrl ||
+      _requireString(attemptedAndroid, "packageName") != prepared.packageName ||
+      _requireString(attemptedAndroid, "versionName") != prepared.versionName ||
+      _requireInt(attemptedAndroid, "versionCode") != prepared.versionCode ||
+      _requireString(attemptedFirebase, "projectId") !=
+          registration.projectId ||
+      _requireString(attemptedFirebase, "appId") != registration.appId ||
+      _requireString(attemptedFirebase, "groupAlias") !=
+          trustedTesterGroupAlias ||
+      _requireInt(attemptedFirebase, "exitCode") != 0) {
+    throw const PublicationException(
+      "The attempt record differs from the prepared release or Firebase "
+      "registration.",
+    );
+  }
+  final firebaseOutput = _requireString(attemptedFirebase, "output");
+  Map<String, dynamic> firebaseSuccess;
+  try {
+    firebaseSuccess = _requireMap(
+      jsonDecode(firebaseOutput),
+      "Firebase JSON-only success output",
+    );
+  } on FormatException {
+    throw const PublicationException(
+      "The attempt does not contain Firebase JSON-only success output.",
+    );
+  }
+  if (_requireString(firebaseSuccess, "status") != "success") {
+    throw const PublicationException(
+      "The attempt does not contain Firebase JSON-only success output.",
+    );
+  }
+  final attemptedReleaseNotes = _requireString(attempt, "releaseNotes");
+
+  final evidence = _loadImmutablePublicationJson(
+    releaseEvidencePath,
+    label: "Firebase release evidence",
+    repositoryRoot: repositoryRoot,
+  );
+  final releasesValue = evidence["releases"];
+  if (releasesValue is! List ||
+      releasesValue.any((release) => release is! Map)) {
+    throw const PublicationException(
+      "Firebase release evidence must contain a release list.",
+    );
+  }
+  final matchingReleases = releasesValue
+      .map((release) => _requireMap(release, "Firebase release"))
+      .where(
+        (release) =>
+            release["displayVersion"] == prepared.versionName &&
+            release["buildVersion"] == prepared.versionCode.toString(),
+      )
+      .toList();
+  if (matchingReleases.length != 1) {
+    throw const PublicationException(
+      "Firebase evidence must contain exactly one matching version/build.",
+    );
+  }
+  final release = matchingReleases.single;
+  final appIdMatch = RegExp(
+    r"^1:(\d+):android:[A-Za-z0-9_-]+$",
+  ).firstMatch(registration.appId);
+  if (appIdMatch == null) {
+    throw const PublicationException(
+      "The Firebase Android App ID cannot form an API resource name.",
+    );
+  }
+  final releaseResourceName = _requireString(release, "name");
+  final expectedReleasePrefix =
+      "projects/${appIdMatch.group(1)}/apps/${registration.appId}/releases/";
+  if (!releaseResourceName.startsWith(expectedReleasePrefix) ||
+      releaseResourceName.length == expectedReleasePrefix.length) {
+    throw const PublicationException(
+      "Firebase evidence identifies a different application resource.",
+    );
+  }
+  final releaseNotes = _requireMap(
+    release["releaseNotes"],
+    "Firebase releaseNotes",
+  );
+  if (_requireString(releaseNotes, "text") != attemptedReleaseNotes) {
+    throw const PublicationException(
+      "Firebase release notes differ from the immutable attempt.",
+    );
+  }
+  final releaseCreatedAt = _requireDateTime(release, "createTime");
+  if (releaseCreatedAt.isBefore(
+        attemptedAt.subtract(const Duration(hours: 2)),
+      ) ||
+      releaseCreatedAt.isAfter(attemptedAt.add(const Duration(minutes: 5)))) {
+    throw const PublicationException(
+      "Firebase release creation time does not match the attempt window.",
+    );
+  }
+  final references = FirebaseReleaseReferences(
+    firebaseConsoleUri: _requireFirebaseReleaseUri(
+      release,
+      "firebaseConsoleUri",
+      "console.firebase.google.com",
+    ),
+    testingUri: _requireFirebaseReleaseUri(
+      release,
+      "testingUri",
+      "appdistribution.firebase.google.com",
+    ),
+    binaryDownloadUri: _requireFirebaseReleaseUri(
+      release,
+      "binaryDownloadUri",
+      "firebaseappdistribution.googleapis.com",
+    ),
+    uploadDisposition: "RECONCILED_CLI_JSON_SUCCESS",
+  );
+  return ReconciliationEvidence(
+    attemptedAt: attemptedAt,
+    releaseCreatedAt: releaseCreatedAt,
+    releaseNotes: attemptedReleaseNotes,
+    releaseResourceName: releaseResourceName,
+    references: references,
+  );
+}
+
+Map<String, dynamic> _loadImmutablePublicationJson(
+  String path, {
+  required String label,
+  required String repositoryRoot,
+  String? requiredDirectory,
+}) {
+  if (FileSystemEntity.typeSync(path, followLinks: false) !=
+      FileSystemEntityType.file) {
+    throw PublicationException("$label is missing or is not a regular file.");
+  }
+  final file = File(path);
+  final resolvedPath = file.resolveSymbolicLinksSync();
+  _requireOutsideRepository(resolvedPath, repositoryRoot);
+  requireReadOnlyFile(file);
+  requirePrivateReleaseDirectory(Directory(p.dirname(resolvedPath)));
+  if (requiredDirectory != null &&
+      !p.equals(p.dirname(resolvedPath), requiredDirectory)) {
+    throw PublicationException("$label must remain in the receipt directory.");
+  }
+  try {
+    return _requireMap(jsonDecode(file.readAsStringSync()), label);
+  } on FormatException {
+    throw PublicationException("$label is invalid JSON.");
+  }
+}
+
+String _requireFirebaseReleaseUri(
+  Map<String, dynamic> release,
+  String key,
+  String expectedHost,
+) {
+  final value = _requireString(release, key);
+  final uri = Uri.tryParse(value);
+  if (uri == null ||
+      uri.scheme != "https" ||
+      uri.host != expectedHost ||
+      uri.userInfo.isNotEmpty) {
+    throw PublicationException(
+      "Firebase release evidence contains an invalid '$key'.",
+    );
+  }
+  return uri.toString();
+}
+
 Directory prepareExternalReceiptDirectory(
   String path, {
   required String repositoryRoot,
@@ -642,6 +1117,7 @@ Directory prepareExternalReceiptDirectory(
       exitCode: 64,
     );
   }
+  _restrictPrivateDirectory(Directory(resolved), label: "receipt");
   return Directory(resolved);
 }
 
@@ -665,6 +1141,7 @@ Future<PreparedReleaseManifest> loadAndValidatePreparedManifest(
   final resolvedManifestPath = manifest.resolveSymbolicLinksSync();
   _requireOutsideRepository(resolvedManifestPath, repositoryRoot);
   requireReadOnlyFile(manifest);
+  requirePrivateReleaseDirectory(Directory(p.dirname(resolvedManifestPath)));
 
   Map<String, dynamic> root;
   try {
@@ -729,6 +1206,11 @@ Future<PreparedReleaseManifest> loadAndValidatePreparedManifest(
   final resolvedApkPath = apk.resolveSymbolicLinksSync();
   _requireOutsideRepository(resolvedApkPath, repositoryRoot);
   requireReadOnlyFile(apk);
+  if (!p.equals(p.dirname(resolvedManifestPath), p.dirname(resolvedApkPath))) {
+    throw const PublicationException(
+      "The prepared APK and manifest must remain in the same private directory.",
+    );
+  }
   if (apk.lengthSync() != apkSizeBytes) {
     throw const PublicationException(
       "The prepared APK size differs from the manifest.",
@@ -867,6 +1349,20 @@ void requireReadOnlyFile(File file) {
   if (file.statSync().mode & writePermissionBits != 0) {
     throw PublicationException(
       "Prepared release file is writable: ${file.path}",
+    );
+  }
+}
+
+void requirePrivateReleaseDirectory(Directory directory) {
+  if (!directory.existsSync()) {
+    throw PublicationException(
+      "Prepared release directory does not exist: ${directory.path}",
+    );
+  }
+  final resolved = Directory(directory.resolveSymbolicLinksSync());
+  if ((resolved.statSync().mode & 0x1ff) != 0x1c0) {
+    throw PublicationException(
+      "Prepared release directory must be mode 0700: ${resolved.path}",
     );
   }
 }
@@ -1160,6 +1656,8 @@ Map<String, Object?> buildSuccessfulPublicationReceipt({
   required FirebaseRegistration registration,
   required String releaseNotes,
   required FirebaseReleaseReferences references,
+  DateTime? publishedAt,
+  Map<String, Object?>? reconciliation,
 }) => <String, Object?>{
   "schemaVersion": publicationReceiptSchemaVersion,
   "publicationTool": <String, Object?>{
@@ -1167,7 +1665,7 @@ Map<String, Object?> buildSuccessfulPublicationReceipt({
     "version": publicationToolVersion,
   },
   "status": "published",
-  "publishedAt": DateTime.now().toUtc().toIso8601String(),
+  "publishedAt": (publishedAt ?? DateTime.now()).toUtc().toIso8601String(),
   "releaseId": prepared.releaseId,
   "preparedManifest": <String, Object?>{
     "absolutePath": prepared.manifestPath,
@@ -1204,6 +1702,7 @@ Map<String, Object?> buildSuccessfulPublicationReceipt({
         "Firebase CLI reports that this link expires in 1 hour.",
   },
   "releaseNotes": releaseNotes,
+  "reconciliation": ?reconciliation,
 };
 
 String writeFailedPublicationAttempt(
@@ -1239,6 +1738,10 @@ String writeFailedPublicationAttempt(
     "status": "failed-or-partial",
     "attemptedAt": DateTime.now().toUtc().toIso8601String(),
     "releaseId": prepared.releaseId,
+    "preparedManifest": <String, Object?>{
+      "absolutePath": prepared.manifestPath,
+      "sha256": prepared.manifestSha256,
+    },
     "artifact": <String, Object?>{
       "absolutePath": prepared.apkPath,
       "sha256": prepared.apkSha256,
@@ -1280,6 +1783,7 @@ void writeImmutableJson(String finalPath, Map<String, Object?> value) {
       exitCode: 73,
     );
   }
+  requirePrivateReleaseDirectory(parent);
   final staging = parent.createTempSync(".firebase-receipt-");
   var linked = false;
   try {
@@ -1354,6 +1858,16 @@ void printPublicationSummary(
   stdout.writeln("  Receipt directory: $receiptDirectory");
 }
 
+void _restrictPrivateDirectory(Directory directory, {required String label}) {
+  final result = Process.runSync("chmod", ["0700", directory.path]);
+  if (result.exitCode != 0 || (directory.statSync().mode & 0x1ff) != 0x1c0) {
+    throw PublicationException(
+      "The Firebase $label directory could not be restricted to mode 0700.",
+      exitCode: 73,
+    );
+  }
+}
+
 void _requireOutsideRepository(String path, String repositoryRoot) {
   if (p.equals(path, repositoryRoot) || p.isWithin(repositoryRoot, path)) {
     throw const PublicationException(
@@ -1395,6 +1909,17 @@ int _requireInt(Map<String, dynamic> map, String key) {
     throw PublicationException("Expected '$key' to be an integer.");
   }
   return value;
+}
+
+DateTime _requireDateTime(Map<String, dynamic> map, String key) {
+  final value = _requireString(map, key);
+  final parsed = DateTime.tryParse(value)?.toUtc();
+  if (parsed == null || !value.endsWith("Z")) {
+    throw PublicationException(
+      "Expected '$key' to be one UTC ISO-8601 timestamp.",
+    );
+  }
+  return parsed;
 }
 
 bool _requireBool(Map<String, dynamic> map, String key) {

@@ -1,6 +1,6 @@
 # Firebase Android Distribution for the Self-Hosted Photos App
 
-**Status:** V1 complete as of 2026-07-19. Android no-upload reconciliation remains in the V1.1 backlog before any release after build `2159`.
+**Status:** V1 complete as of 2026-07-19. V1.1 Task 4.1 is reconciling the immutable build-`2158` and build-`2159` Firebase partial attempts before any later Android release.
 **Started:** 2026-07-16
 **Owner:** vanton
 **Planning doc:** n/a
@@ -21,6 +21,7 @@
 | 3 | 3.1 | Publish the baseline release and replace the owner's old app | M | 🟢 done | Museum, PostgreSQL, MinIO, and the private HTTPS routes passed health checks before the audited `1.3.59` (`2158`) baseline was published to `trusted-testers`. Firebase returned incomplete references, so the publisher preserved a read-only partial attempt; the owner verified the exact release and group assignment in Firebase, and no retry occurred. When the physical Android device became available, private package inventory found the legacy identity installed and the replacement absent. After the owner confirmed cloud recovery, password, second-factor, and recovery material, the legacy package was uninstalled and build `2158` was installed through Firebase. A second inventory verified the exact replacement package/version/build and legacy-package absence. The app opened on the intended local server, authenticated to the local Museum account, uploaded a non-sensitive photo that appeared in the local web app, reopened the cloud copy after removal of only the device-local copy, and preserved the account, server binding, cloud library, and readable media after an ADB force-stop and relaunch. |
 | 3 | 3.2 | Publish and verify an in-place Firebase update | M | 🟢 done | Advanced the source to `1.3.59+2159` and pushed commit `adfe9585080e`; the locked dependency resolution, 27 focused preparation/publication tests, shell checks, and privacy checks passed. Museum, PostgreSQL, MinIO, the private `/ping` route, and the existing device media flow were healthy, and private Android toolchain/signing paths were tightened to owner-only access. The first preparation failed closed without an artifact because the documented Keychain password had not been injected; the signing-aware retry produced one mode-`0444` 262,750,609-byte APK/manifest pair with SHA-256 `10273a609343f52995a3a50736d057ab84c816ff3bcef54521539335966d540d`. Independent checks verified the exact package/version, intended endpoint equality, ARM/ARM64 ABIs, release state, pinned signer, v2 signature, source, hash, and modes. After a non-mutating Firebase preflight and exact confirmation, one upload returned exit `0` but again omitted its console reference; the guard wrote one immutable partial-attempt record, no retry occurred, and the authenticated tester view independently showed build `2159`. Firebase then installed `2159` over `2158` without uninstalling. Private package inventory verified the higher build and legacy-package absence; the owner remained authenticated to the intended local server with the existing library and readable media, completed a fresh encrypted upload/download round trip, and retained the account, server, library, and media after an ADB force-stop and relaunch. |
 | 3 | 3.3 | Verify a non-owner tester's fresh installation | S | 🟢 done | A non-owner tester was added privately to `trusted-testers`, accepted the Firebase invitation using their own Google identity, received minimum Tailscale access under their own network identity, and verified the private Museum `/ping` route from the physical Android device. The tester installed existing build `1.3.59` (`2159`) through Firebase as a fresh application, confirmed the intended local server, and authenticated with an individual Museum account and privately retained recovery material. A non-sensitive phone upload appeared in that tester's local Photos web account; after removing only the device-local copy, the cloud copy downloaded and opened correctly. An Android force-stop and relaunch preserved the tester account, server binding, cloud library, and readable media. No tester email, device identifier, account detail, recovery material, private hostname, or media name entered Git. |
+| 4 | 4.1 | Add no-upload Android release reconciliation | M | 🟡 working | Extend the guarded Android publisher with a no-upload mode that consumes one immutable partial attempt plus an immutable official Firebase release-list response, repeats the APK/app/group/ledger checks, requires one exact version/build/notes/time/reference match, and writes the ordinary read-only success receipt without invoking distribution. Use the completed path to reconcile both existing build-`2158` and build-`2159` attempts so the highest guarded Android release enters the local version ledger before any later publication. |
 
 **Legend:** ⚪ not started · 🟡 working · 🟢 done · 🔴 blocked / needs decision
 **Size:** XS · S · M · L · XL (never days or weeks).
@@ -142,7 +143,6 @@ The Firebase account controls tester delivery, not access to encrypted photos. E
 
 | Item | Status | Why |
 |---|---|---|
-| Add no-upload reconciliation for the Android build-`2159` partial attempt before another release | V1.1 backlog | The owner update is delivered and device-verified, but Firebase again omitted receipt references after exit `0`; a later release must bind official read-only release evidence to the immutable attempt instead of retrying or leaving `2159` outside the guarded version ledger. |
 | Automate Firebase publication in GitHub Actions or another continuous-integration service | V1.1 backlog | V1 deliberately proves the release contract locally before introducing service credentials and remote signing or artifact transfer. |
 | Distribute the iOS application through Firebase | V1.1 backlog | Apple provisioning, tester-device registration, and iOS artifact signing are a separate initiative. |
 | Long-term binary archive beyond the local prepared artifact and Firebase retention | V1.1 backlog | Exact source and local artifacts cover the trusted beta; durable binary archival needs a separate retention and access decision. |
@@ -162,6 +162,14 @@ The Firebase account controls tester delivery, not access to encrypted photos. E
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
+
+### 2026-07-19 — Promote Android no-upload reconciliation into V1.1
+
+**Decision:** Implement one generic Android reconciliation path using the already proven iOS evidence model, then use it to reconcile both immutable Android partial attempts without rebuilding, uploading, or notifying testers.
+
+**Why:** Firebase created and delivered builds `2158` and `2159` but omitted the release references required by the Android receipt contract after exit `0`. Device and tester views prove delivery, yet only a receipt bound to official read-only release evidence can safely advance the guarded version ledger before another publication.
+
+**Alternatives considered:** Retry either upload, which risks duplicate releases and notifications; treat console or device observation as a machine-readable receipt, which cannot bind the official release references to the immutable local evidence; or wait until the next release, which would leave its preflight unable to prove the current highest guarded build.
 
 ### 2026-07-19 — Close Android V1 with private non-owner acceptance evidence
 

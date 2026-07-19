@@ -217,6 +217,34 @@ If the command writes `.firebase-attempt-*.json`, Firebase may have accepted the
 binary before a later step failed. Inspect the attempt record and Firebase
 console before any retry. Do not assume a nonzero exit means no mutation.
 
+If the attempt records exit-`0` JSON success but lacks the three release
+references required by the receipt, do not upload again. Use an approved
+authenticated client to save the official read-only
+[`projects.apps.releases.list`](https://firebase.google.com/docs/reference/app-distribution/rest/v1/projects.apps.releases/list)
+response in a private mode-`0700` directory, then make the response mode
+`0444`. Set both immutable inputs locally:
+
+```sh
+export ENTE_FIREBASE_ANDROID_ATTEMPT="/absolute/private/path/firebase-attempt.json"
+export ENTE_FIREBASE_ANDROID_RELEASE_EVIDENCE="/absolute/private/path/firebase-release-list.json"
+```
+
+Run a no-write reconciliation preflight, then finalize the receipt from the
+same inputs:
+
+```sh
+./scripts/publish_self_hosted_android_release.sh --preflight-only
+./scripts/publish_self_hosted_android_release.sh
+```
+
+Reconciliation re-audits the APK, rechecks the active Firebase app/group and
+version ledger, and requires exactly one official release matching the app
+resource, version/build, immutable notes, attempt time window, and all three
+known-host references. It preserves and hashes the attempt and evidence,
+writes the ordinary read-only success receipt with
+`noUploadPerformed: true`, and cannot upload or notify testers. A mismatch or
+ambiguous match writes nothing.
+
 ## 4. Tester onboarding
 
 ### 4.1 Grant the minimum Tailscale access
@@ -362,7 +390,7 @@ not a remote kill switch; private-server access must be revoked separately.
 |---|---|
 | Prepared APK or manifest changed | Stop. Discard the pair and prepare again from clean pushed source. Do not make it writable or repair it. |
 | Wrong Firebase app, package, or group | Stop before confirmation. Correct the local inputs or registration; never upload to see whether Firebase accepts it. |
-| Firebase failure after upload started | Preserve the partial-attempt receipt, inspect the console, and reconcile whether the release and group distribution exist before retrying. |
+| Firebase failure after upload started | Preserve the partial attempt and inspect Firebase before any retry. For exit-`0` JSON-only success, capture immutable official release-list evidence and run guarded no-upload reconciliation; never upload the same release again. |
 | Invitation expired | Resend the invitation from the Firebase tester row and privately confirm the intended Google identity. |
 | Firebase release expired | Prepare the known-good source again with a higher Android version code and publish it through the guarded path. Do not bypass the receipt ledger by reusing the old code. |
 | Bad application release | Select the last known-good public commit, increase its version code, prepare and publish it as a forward rollback, then repeat device acceptance. |
