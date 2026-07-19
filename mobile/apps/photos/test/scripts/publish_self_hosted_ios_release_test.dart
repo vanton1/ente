@@ -382,6 +382,30 @@ void main() {
     }
   });
 
+  test("rejects a manifest without isolated Dart source provenance", () async {
+    final fixture = await _PublisherFixture.create();
+    try {
+      Process.runSync("chmod", ["0644", fixture.manifestPath]);
+      final manifest =
+          jsonDecode(File(fixture.manifestPath).readAsStringSync())
+              as Map<String, dynamic>;
+      (manifest["build"]
+              as Map<String, dynamic>)["dartSourcesGeneratedFromCheckout"] =
+          false;
+      File(fixture.manifestPath).writeAsStringSync(
+        "${const JsonEncoder.withIndent("  ").convert(manifest)}\n",
+      );
+      Process.runSync("chmod", ["0444", fixture.manifestPath]);
+
+      await expectLater(
+        fixture.loadPrepared(),
+        throwsA(isA<IOSPublicationException>()),
+      );
+    } finally {
+      fixture.dispose();
+    }
+  });
+
   test("preflight re-audits and queries Firebase without uploading", () async {
     final fixture = await _PublisherFixture.create();
     try {
@@ -803,6 +827,7 @@ Map<String, Object?> _manifestValue({
   "build": <String, Object?>{
     "archiveExportContractVersion": preparation.archiveExportContractVersion,
     "rustBindingsGeneratedFromCheckout": true,
+    "dartSourcesGeneratedFromCheckout": true,
     "scheme": "selfhosted",
     "configuration": "Release-selfhosted",
     "exportMethod": "release-testing",

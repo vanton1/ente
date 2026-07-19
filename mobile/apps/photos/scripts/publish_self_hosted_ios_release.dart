@@ -814,6 +814,7 @@ Future<PreparedIOSReleaseManifest> loadAndValidatePreparedIOSManifest(
   if (_requireInt(build, "archiveExportContractVersion") !=
           preparation.archiveExportContractVersion ||
       !_requireBool(build, "rustBindingsGeneratedFromCheckout") ||
+      !_requireBool(build, "dartSourcesGeneratedFromCheckout") ||
       _requireString(build, "scheme") != "selfhosted" ||
       _requireString(build, "configuration") != "Release-selfhosted" ||
       _requireString(build, "exportMethod") != "release-testing") {

@@ -48,8 +48,8 @@ The project and CI use Flutter 3.38.10. This checkout currently uses the
 following isolated tools:
 
 ```sh
-export FLUTTER_BIN="/private/tmp/ente-flutter-3.38.10/bin/flutter"
-export DART_BIN="/private/tmp/ente-flutter-3.38.10/bin/dart"
+export FLUTTER_BIN="/private/tmp/ente-flutter-3.38.10-task31/bin/flutter"
+export DART_BIN="/private/tmp/ente-flutter-3.38.10-task31/bin/dart"
 
 export JAVA_HOME="/Users/vanton/projects/ente-android-toolchain/jdk-17.0.19+10/Contents/Home"
 export ANDROID_HOME="/Users/vanton/projects/ente-android-toolchain/android-sdk"
@@ -432,13 +432,19 @@ their final contents before either is treated as a baseline release.
 
 Use the preparation command for every IPA that may later be published. Unlike
 the lower-level Ad Hoc command, it owns temporary archive/export paths, builds
-from a detached worktree at the pushed `HEAD` commit, generates the ignored
-Flutter-Rust-Bridge outputs there with the repository's official
-`cargo codegen frb` command, independently audits the exported IPA, and
-atomically preserves one read-only IPA/JSON manifest pair. The generator sees
+from a detached worktree at the pushed `HEAD` commit, resolves the committed
+Flutter lockfile, and regenerates every ignored compile-time source there. The
+generation order is shared and Photos localizations, the repository's official
+`cargo codegen frb` command, then narrowly filtered shared and Photos builders
+for the required ignored Rust APIs and tracked Photos model outputs. The latter
+must remain byte-identical so the checkout stays clean. Preparation requires all
+FRB files, both ignored Freezed files, both localization entrypoints, and every
+locale file those entrypoints import before independently auditing the exported
+IPA and atomically preserving one read-only IPA/JSON manifest pair. The
+generators see
 only required toolchain/cache paths—not endpoint, Apple-signing, Firebase,
-Google Cloud, SSH-agent, or general secret variables. It never contacts
-Firebase.
+Google Cloud, SSH-agent, or general secret variables. Preparation never
+contacts Firebase.
 
 Commit and push the preparation tooling and every intended application change
 before running it. The command refuses an unpushed `HEAD` and refuses when its
@@ -503,8 +509,8 @@ The preflight re-hashes the read-only IPA/manifest pair, repeats the native IPA
 audit, validates the exact active Firebase iOS bundle registration and pinned
 `trusted-ios-testers` group, checks prior success receipts, and generates the
 AGPL source/build links used in release notes. It also requires manifest proof
-that Rust bindings were generated inside the isolated source checkout. It
-neither prompts nor uploads.
+that Rust bindings and their compile-critical Dart sources were generated
+inside the isolated source checkout. It neither prompts nor uploads.
 
 Optional operator-facing notes can be added from a regular local text file:
 

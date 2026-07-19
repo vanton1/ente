@@ -107,39 +107,40 @@ void main() {
     expect(result, isNot(contains("GCLOUD_PROJECT")));
   });
 
-  test("limits Rust codegen to toolchain and cache paths", () {
-    final result = sanitizedIOSCodegenEnvironment(const <String, String>{
-      "PATH": "/usr/bin:/bin",
-      "HOME": "/tmp/home",
-      "CARGO_HOME": "/tmp/cargo",
-      "RUSTUP_HOME": "/tmp/rustup",
-      "DART_BIN": "/tmp/flutter/bin/dart",
-      "FLUTTER_BIN": "/tmp/flutter/bin/flutter",
-      "FIREBASE_CLI": "/tmp/firebase",
-      "FIREBASE_TOKEN": "secret",
-      "ENTE_FIREBASE_IOS_APP_ID": "private-binding",
-      "ENTE_IOS_ADHOC_PROFILE": "/tmp/private.mobileprovision",
-      "ENTE_SELF_HOSTED_ENDPOINT": _endpoint,
-      "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/key.json",
-      "GCLOUD_PROJECT": "project",
-      "SSH_AUTH_SOCK": "/tmp/agent.sock",
-      "DEVELOPMENT_TEAM": _team,
-      "CODE_SIGN_IDENTITY": "private identity",
-      "PROVISIONING_PROFILE_SPECIFIER": "private profile",
-      "APPLE_ID": "private@example.invalid",
-      "APPLE_APP_SPECIFIC_PASSWORD": "secret",
-      "FASTLANE_SESSION": "secret",
-      "MATCH_PASSWORD": "secret",
-      "APP_STORE_CONNECT_API_KEY": "secret",
-      "ASC_KEY": "secret",
-      "AWS_SECRET_ACCESS_KEY": "secret",
-      "AZURE_CREDENTIALS": "secret",
-      "CUSTOM_PASSWORD": "secret",
-      "CUSTOM_PRIVATE_KEY": "secret",
-      "CUSTOM_SECRET": "secret",
-      "SENTRY_AUTH_TOKEN": "secret",
-      "CUSTOM_CREDENTIALS": "secret",
-    });
+  test("limits source generation to toolchain and cache paths", () {
+    final result =
+        sanitizedIOSSourceGenerationEnvironment(const <String, String>{
+          "PATH": "/usr/bin:/bin",
+          "HOME": "/tmp/home",
+          "CARGO_HOME": "/tmp/cargo",
+          "RUSTUP_HOME": "/tmp/rustup",
+          "DART_BIN": "/tmp/flutter/bin/dart",
+          "FLUTTER_BIN": "/tmp/flutter/bin/flutter",
+          "FIREBASE_CLI": "/tmp/firebase",
+          "FIREBASE_TOKEN": "secret",
+          "ENTE_FIREBASE_IOS_APP_ID": "private-binding",
+          "ENTE_IOS_ADHOC_PROFILE": "/tmp/private.mobileprovision",
+          "ENTE_SELF_HOSTED_ENDPOINT": _endpoint,
+          "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/key.json",
+          "GCLOUD_PROJECT": "project",
+          "SSH_AUTH_SOCK": "/tmp/agent.sock",
+          "DEVELOPMENT_TEAM": _team,
+          "CODE_SIGN_IDENTITY": "private identity",
+          "PROVISIONING_PROFILE_SPECIFIER": "private profile",
+          "APPLE_ID": "private@example.invalid",
+          "APPLE_APP_SPECIFIC_PASSWORD": "secret",
+          "FASTLANE_SESSION": "secret",
+          "MATCH_PASSWORD": "secret",
+          "APP_STORE_CONNECT_API_KEY": "secret",
+          "ASC_KEY": "secret",
+          "AWS_SECRET_ACCESS_KEY": "secret",
+          "AZURE_CREDENTIALS": "secret",
+          "CUSTOM_PASSWORD": "secret",
+          "CUSTOM_PRIVATE_KEY": "secret",
+          "CUSTOM_SECRET": "secret",
+          "SENTRY_AUTH_TOKEN": "secret",
+          "CUSTOM_CREDENTIALS": "secret",
+        });
 
     expect(result, <String, String>{
       "PATH": "/usr/bin:/bin",
@@ -212,6 +213,87 @@ void main() {
           environment: <String, String>{
             "PATH": binDirectory.path,
             "HOME": p.join(root.path, "home"),
+          },
+        ),
+        throwsA(
+          isA<IOSReleasePreparationException>().having(
+            (error) => error.exitCode,
+            "exitCode",
+            65,
+          ),
+        ),
+      );
+    } finally {
+      root.deleteSync(recursive: true);
+    }
+  });
+
+  test("generates all isolated iOS source inputs in dependency order", () async {
+    final root = Directory.systemTemp.createTempSync(
+      "ente-ios-source-generation-test-",
+    );
+    try {
+      final tools = await _createIOSSourceGenerationFixture(
+        root,
+        writesPhotosFreezed: true,
+      );
+
+      await generateIOSReleaseSources(
+        checkoutDirectory: root.path,
+        environment: <String, String>{
+          "PATH": tools.binDirectory,
+          "HOME": p.join(root.path, "home"),
+          "FLUTTER_BIN": tools.flutter,
+          "DART_BIN": tools.dart,
+        },
+      );
+
+      expect(File(tools.invocations).readAsLinesSync(), <String>[
+        "flutter|mobile|pub get --enforce-lockfile",
+        "flutter|mobile/packages/strings|gen-l10n",
+        "flutter|mobile/apps/photos|gen-l10n",
+        "cargo|rust|codegen frb",
+        "dart|mobile/packages/rust|run build_runner build "
+            "--build-filter=lib/src/rust/api/contacts.freezed.dart",
+        "dart|mobile/apps/photos|run build_runner build "
+            "--build-filter=lib/src/rust/api/ml_indexing_api.freezed.dart "
+            "--build-filter=lib/models/location/location.freezed.dart "
+            "--build-filter=lib/models/location/location.g.dart "
+            "--build-filter=lib/models/location_tag/location_tag.freezed.dart "
+            "--build-filter=lib/models/location_tag/location_tag.g.dart",
+      ]);
+      for (final relativePath in <String>[
+        ...requiredGeneratedIOSBindingPaths,
+        ...requiredGeneratedIOSDartSourcePaths,
+      ]) {
+        expect(
+          File(p.join(root.path, relativePath)).lengthSync(),
+          greaterThan(0),
+        );
+      }
+    } finally {
+      root.deleteSync(recursive: true);
+    }
+  });
+
+  test("rejects incomplete generated Dart sources", () async {
+    final root = Directory.systemTemp.createTempSync(
+      "ente-ios-source-generation-missing-test-",
+    );
+    try {
+      final tools = await _createIOSSourceGenerationFixture(
+        root,
+        writesPhotosFreezed: false,
+      );
+
+      await expectLater(
+        generateIOSReleaseSources(
+          checkoutDirectory: root.path,
+          environment: <String, String>{
+            "PATH": tools.binDirectory,
+            "HOME": p.join(root.path, "home"),
+            "FLUTTER_BIN": tools.flutter,
+            "DART_BIN": tools.dart,
           },
         ),
         throwsA(
@@ -387,13 +469,13 @@ notAfter=Jul 17 11:30:00 2027 GMT
     () async {
       final fixture = await _IsolationFixture.create();
       try {
-        var generatedBindings = false;
+        var generatedSources = false;
         final result = await prepareSelfHostedIOSRelease(
           fixture.options,
           appDirectoryOverride: fixture.appDirectory,
-          bindingGenerator:
+          sourceGenerator:
               ({required checkoutDirectory, required environment}) async {
-                generatedBindings = true;
+                generatedSources = true;
                 expect(checkoutDirectory, isNot(fixture.repositoryRoot));
                 expect(
                   p.isWithin(fixture.repositoryRoot, checkoutDirectory),
@@ -436,8 +518,9 @@ notAfter=Jul 17 11:30:00 2027 GMT
         expect(manifest["source"]["isolatedCheckout"], isTrue);
         expect(manifest["source"]["checkoutCleanBeforeBuild"], isTrue);
         expect(manifest["source"]["checkoutCleanAfterAudit"], isTrue);
-        expect(generatedBindings, isTrue);
+        expect(generatedSources, isTrue);
         expect(manifest["build"]["rustBindingsGeneratedFromCheckout"], isTrue);
+        expect(manifest["build"]["dartSourcesGeneratedFromCheckout"], isTrue);
         expect(
           Directory(fixture.options.outputDirectory).statSync().mode & 0x1ff,
           0x1c0,
@@ -492,6 +575,39 @@ notAfter=Jul 17 11:30:00 2027 GMT
       expect(audit.authorizedDeviceCount, 1);
     });
   }
+
+  final sourceGenerationCheckout =
+      Platform.environment["ENTE_TEST_IOS_SOURCE_GENERATION_CHECKOUT"];
+  if (sourceGenerationCheckout != null) {
+    test(
+      "generates every real source in a clean checkout",
+      () async {
+        await generateIOSReleaseSources(
+          checkoutDirectory: sourceGenerationCheckout,
+          environment: sanitizedIOSSourceGenerationEnvironment(
+            Platform.environment,
+          ),
+        );
+        for (final relativePath in <String>[
+          ...requiredGeneratedIOSBindingPaths,
+          ...requiredGeneratedIOSDartSourcePaths,
+        ]) {
+          expect(
+            File(p.join(sourceGenerationCheckout, relativePath)).lengthSync(),
+            greaterThan(0),
+          );
+        }
+        final status = await Process.run("git", const [
+          "status",
+          "--porcelain",
+          "--untracked-files=all",
+        ], workingDirectory: sourceGenerationCheckout);
+        expect(status.exitCode, 0);
+        expect((status.stdout as String).trim(), isEmpty);
+      },
+      timeout: const Timeout(Duration(minutes: 20)),
+    );
+  }
 }
 
 String _fakeCargoScript({required bool writesBindings}) {
@@ -516,6 +632,97 @@ repo="$(cd .. && /bin/pwd)"
 @@WRITES@@
 '''
       .replaceAll("@@WRITES@@", writes);
+}
+
+class _IOSSourceGenerationTools {
+  const _IOSSourceGenerationTools({
+    required this.binDirectory,
+    required this.flutter,
+    required this.dart,
+    required this.invocations,
+  });
+
+  final String binDirectory;
+  final String flutter;
+  final String dart;
+  final String invocations;
+}
+
+Future<_IOSSourceGenerationTools> _createIOSSourceGenerationFixture(
+  Directory root, {
+  required bool writesPhotosFreezed,
+}) async {
+  for (final relativePath in requiredIOSSourceGenerationInputPaths) {
+    final file = File(p.join(root.path, relativePath));
+    file.parent.createSync(recursive: true);
+    file.writeAsStringSync("fixture input\n");
+  }
+  final binDirectory = Directory(p.join(root.path, "bin"))..createSync();
+  final script = _fakeIOSSourceToolScript(
+    writesPhotosFreezed: writesPhotosFreezed,
+  );
+  for (final name in const <String>["flutter", "dart", "cargo"]) {
+    final tool = File(p.join(binDirectory.path, name))
+      ..writeAsStringSync(script);
+    await Process.run("chmod", ["+x", tool.path]);
+  }
+  return _IOSSourceGenerationTools(
+    binDirectory: binDirectory.path,
+    flutter: p.join(binDirectory.path, "flutter"),
+    dart: p.join(binDirectory.path, "dart"),
+    invocations: p.join(root.path, "source-generation-invocations.txt"),
+  );
+}
+
+String _fakeIOSSourceToolScript({required bool writesPhotosFreezed}) {
+  final photosFreezed = writesPhotosFreezed
+      ? r'''
+    /bin/mkdir -p "$repo/mobile/apps/photos/lib/src/rust/api"
+    /usr/bin/printf 'generated\n' >"$repo/mobile/apps/photos/lib/src/rust/api/ml_indexing_api.freezed.dart"
+'''
+      : "  :";
+  final bindings = requiredGeneratedIOSBindingPaths.map((relativePath) {
+    return r'''
+  path="$repo/@@PATH@@"
+  /bin/mkdir -p "${path%/*}"
+  /usr/bin/printf 'generated\n' >"$path"
+'''
+        .replaceAll("@@PATH@@", relativePath);
+  }).join();
+  return r'''
+#!/bin/bash
+set -euo pipefail
+tool="$(/usr/bin/basename "$0")"
+repo="$(cd "$(/usr/bin/dirname "$0")/.." && /bin/pwd)"
+relative="${PWD#"$repo/"}"
+case "$PWD" in
+  */mobile) relative="mobile" ;;
+  */mobile/packages/strings) relative="mobile/packages/strings" ;;
+  */mobile/packages/rust) relative="mobile/packages/rust" ;;
+  */mobile/apps/photos) relative="mobile/apps/photos" ;;
+  */rust) relative="rust" ;;
+esac
+/usr/bin/printf '%s|%s|%s\n' "$tool" "$relative" "$*" >>"$repo/source-generation-invocations.txt"
+
+if [[ "$tool" == "flutter" && "$1" == "gen-l10n" && "$relative" == "mobile/packages/strings" ]]; then
+  /bin/mkdir -p "$repo/mobile/packages/strings/lib/l10n"
+  /usr/bin/printf "import 'strings_localizations_en.dart';\n" >"$repo/mobile/packages/strings/lib/l10n/strings_localizations.dart"
+  /usr/bin/printf 'generated\n' >"$repo/mobile/packages/strings/lib/l10n/strings_localizations_en.dart"
+elif [[ "$tool" == "flutter" && "$1" == "gen-l10n" && "$relative" == "mobile/apps/photos" ]]; then
+  /bin/mkdir -p "$repo/mobile/apps/photos/lib/generated/intl"
+  /usr/bin/printf "import 'app_localizations_en.dart';\n" >"$repo/mobile/apps/photos/lib/generated/intl/app_localizations.dart"
+  /usr/bin/printf 'generated\n' >"$repo/mobile/apps/photos/lib/generated/intl/app_localizations_en.dart"
+elif [[ "$tool" == "cargo" ]]; then
+@@BINDINGS@@
+elif [[ "$PWD" == */mobile/packages/rust ]]; then
+  /bin/mkdir -p "$repo/mobile/packages/rust/lib/src/rust/api"
+  /usr/bin/printf 'generated\n' >"$repo/mobile/packages/rust/lib/src/rust/api/contacts.freezed.dart"
+elif [[ "$1" == "run" && "${2:-}" == "build_runner" && "$PWD" == */mobile/apps/photos ]]; then
+@@PHOTOS_FREEZED@@
+fi
+'''
+      .replaceAll("@@BINDINGS@@", bindings)
+      .replaceAll("@@PHOTOS_FREEZED@@", photosFreezed);
 }
 
 Map<String, String> _environment() => <String, String>{

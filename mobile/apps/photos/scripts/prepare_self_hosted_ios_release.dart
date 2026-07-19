@@ -5,9 +5,9 @@ import "package:path/path.dart" as p;
 import "package:photos/core/network/endpoint_policy.dart";
 
 const preparationToolName = "ente-self-hosted-ios-release-preparer";
-const preparationToolVersion = "1.1.0";
+const preparationToolVersion = "1.2.0";
 const releaseManifestSchemaVersion = 1;
-const archiveExportContractVersion = 2;
+const archiveExportContractVersion = 3;
 
 const expectedBundleIdentifier = "me.vanton.ente.photos.selfhosted";
 const expectedDistributionCertificateSha256 =
@@ -31,6 +31,22 @@ const requiredGeneratedIOSBindingPaths = <String>[
   "mobile/packages/rust/lib/src/rust/frb_generated.io.dart",
   "mobile/apps/photos/lib/src/rust/frb_generated.dart",
   "mobile/apps/photos/lib/src/rust/frb_generated.io.dart",
+];
+const requiredGeneratedIOSDartSourcePaths = <String>[
+  "mobile/packages/rust/lib/src/rust/api/contacts.freezed.dart",
+  "mobile/apps/photos/lib/src/rust/api/ml_indexing_api.freezed.dart",
+  "mobile/packages/strings/lib/l10n/strings_localizations.dart",
+  "mobile/apps/photos/lib/generated/intl/app_localizations.dart",
+];
+const requiredIOSSourceGenerationInputPaths = <String>[
+  "mobile/pubspec.yaml",
+  "mobile/pubspec.lock",
+  "mobile/packages/rust/pubspec.yaml",
+  "mobile/packages/strings/pubspec.yaml",
+  "mobile/packages/strings/l10n.yaml",
+  "mobile/apps/photos/pubspec.yaml",
+  "mobile/apps/photos/l10n.yaml",
+  "rust/Cargo.toml",
 ];
 
 const _usage = """
@@ -375,7 +391,7 @@ typedef IOSIpaAuditor =
       Map<String, String>? processEnvironment,
     });
 
-typedef IOSBindingGenerator =
+typedef IOSSourceGenerator =
     Future<void> Function({
       required String checkoutDirectory,
       required Map<String, String> environment,
@@ -385,7 +401,7 @@ Future<IOSReleasePreparationResult> prepareSelfHostedIOSRelease(
   IOSPreparationOptions options, {
   String? appDirectoryOverride,
   IOSIpaAuditor auditor = auditIOSReleaseIpa,
-  IOSBindingGenerator bindingGenerator = generateIOSReleaseBindings,
+  IOSSourceGenerator sourceGenerator = generateIOSReleaseSources,
 }) async {
   final appDirectory = appDirectoryOverride == null
       ? p.dirname(p.dirname(p.normalize(Platform.script.toFilePath())))
@@ -500,12 +516,12 @@ Future<IOSReleasePreparationResult> prepareSelfHostedIOSRelease(
         exitCode: 65,
       );
     }
-    final codegenEnvironment = sanitizedIOSCodegenEnvironment(
+    final sourceGenerationEnvironment = sanitizedIOSSourceGenerationEnvironment(
       options.environment,
     );
-    await bindingGenerator(
+    await sourceGenerator(
       checkoutDirectory: checkoutDirectory,
-      environment: codegenEnvironment,
+      environment: sourceGenerationEnvironment,
     );
     await _requireCleanCheckout(checkoutDirectory, expectedCommit: commit);
     final builderPath = p.join(
@@ -672,6 +688,7 @@ Future<IOSReleasePreparationResult> finalizePreparedIOSRelease({
       "build": <String, Object?>{
         "archiveExportContractVersion": archiveExportContractVersion,
         "rustBindingsGeneratedFromCheckout": true,
+        "dartSourcesGeneratedFromCheckout": true,
         "scheme": "selfhosted",
         "configuration": "Release-selfhosted",
         "exportMethod": "release-testing",
@@ -1742,7 +1759,7 @@ Map<String, String> sanitizedIOSPreparationEnvironment(
   return result;
 }
 
-Map<String, String> sanitizedIOSCodegenEnvironment(
+Map<String, String> sanitizedIOSSourceGenerationEnvironment(
   Map<String, String> environment,
 ) {
   const retainedKeys = <String>{
@@ -1757,6 +1774,113 @@ Map<String, String> sanitizedIOSCodegenEnvironment(
     Map<String, String>.fromEntries(
       environment.entries.where((entry) => retainedKeys.contains(entry.key)),
     ),
+  );
+}
+
+Future<void> generateIOSReleaseSources({
+  required String checkoutDirectory,
+  required Map<String, String> environment,
+}) async {
+  for (final relativePath in requiredIOSSourceGenerationInputPaths) {
+    _requireGeneratedIOSSourceFile(checkoutDirectory, relativePath);
+  }
+
+  final mobileDirectory = p.join(checkoutDirectory, "mobile");
+  final stringsDirectory = p.join(mobileDirectory, "packages", "strings");
+  final sharedRustDirectory = p.join(mobileDirectory, "packages", "rust");
+  final photosDirectory = p.join(mobileDirectory, "apps", "photos");
+  final flutter = _resolveIOSSourceGenerationExecutable(
+    "FLUTTER_BIN",
+    "flutter",
+    environment,
+  );
+  final dart = _resolveIOSSourceGenerationExecutable(
+    "DART_BIN",
+    "dart",
+    environment,
+  );
+
+  stdout.writeln(
+    "Resolving locked Flutter dependencies in the isolated checkout",
+  );
+  await _requireSuccessfulProcess(
+    flutter,
+    const ["pub", "get", "--enforce-lockfile"],
+    workingDirectory: mobileDirectory,
+    environment: environment,
+    failureMessage:
+        "Could not resolve locked Flutter dependencies in the isolated checkout.",
+  );
+
+  stdout.writeln("Generating shared localizations in the isolated checkout");
+  await _requireSuccessfulProcess(
+    flutter,
+    const ["gen-l10n"],
+    workingDirectory: stringsDirectory,
+    environment: environment,
+    failureMessage:
+        "Could not generate shared localizations in the isolated checkout.",
+  );
+  stdout.writeln("Generating Photos localizations in the isolated checkout");
+  await _requireSuccessfulProcess(
+    flutter,
+    const ["gen-l10n"],
+    workingDirectory: photosDirectory,
+    environment: environment,
+    failureMessage:
+        "Could not generate Photos localizations in the isolated checkout.",
+  );
+
+  await generateIOSReleaseBindings(
+    checkoutDirectory: checkoutDirectory,
+    environment: environment,
+  );
+
+  stdout.writeln("Generating shared Rust API Freezed sources");
+  await _requireSuccessfulProcess(
+    dart,
+    const [
+      "run",
+      "build_runner",
+      "build",
+      "--build-filter=lib/src/rust/api/contacts.freezed.dart",
+    ],
+    workingDirectory: sharedRustDirectory,
+    environment: environment,
+    failureMessage:
+        "Could not generate shared Rust API Freezed sources in the isolated checkout.",
+  );
+  stdout.writeln("Generating Photos Rust API Freezed sources");
+  await _requireSuccessfulProcess(
+    dart,
+    const [
+      "run",
+      "build_runner",
+      "build",
+      "--build-filter=lib/src/rust/api/ml_indexing_api.freezed.dart",
+      "--build-filter=lib/models/location/location.freezed.dart",
+      "--build-filter=lib/models/location/location.g.dart",
+      "--build-filter=lib/models/location_tag/location_tag.freezed.dart",
+      "--build-filter=lib/models/location_tag/location_tag.g.dart",
+    ],
+    workingDirectory: photosDirectory,
+    environment: environment,
+    failureMessage:
+        "Could not generate Photos Rust API Freezed sources in the isolated checkout.",
+  );
+
+  for (final relativePath in requiredGeneratedIOSDartSourcePaths) {
+    _requireGeneratedIOSSourceFile(checkoutDirectory, relativePath);
+  }
+  _requireGeneratedIOSLocalizationFamily(
+    checkoutDirectory,
+    "mobile/packages/strings/lib/l10n/strings_localizations.dart",
+    "strings_localizations",
+  );
+  _requireGeneratedIOSLocalizationFamily(
+    checkoutDirectory,
+    "mobile/apps/photos/lib/generated/intl/app_localizations.dart",
+    "app_localizations",
   );
 }
 
@@ -1790,15 +1914,78 @@ Future<void> generateIOSReleaseBindings({
   );
 
   for (final relativePath in requiredGeneratedIOSBindingPaths) {
-    final generatedPath = p.join(checkoutDirectory, relativePath);
-    if (FileSystemEntity.typeSync(generatedPath, followLinks: false) !=
-            FileSystemEntityType.file ||
-        File(generatedPath).lengthSync() == 0) {
+    _requireGeneratedIOSSourceFile(checkoutDirectory, relativePath);
+  }
+}
+
+String _resolveIOSSourceGenerationExecutable(
+  String environmentName,
+  String fallback,
+  Map<String, String> environment,
+) {
+  final configured = environment[environmentName];
+  if (configured == null || configured.isEmpty) {
+    return _findExecutable(fallback, environment);
+  }
+  if (!p.isAbsolute(configured) ||
+      FileSystemEntity.typeSync(configured, followLinks: true) !=
+          FileSystemEntityType.file) {
+    throw IOSReleasePreparationException(
+      "$environmentName must name an existing absolute executable.",
+      exitCode: 69,
+    );
+  }
+  return configured;
+}
+
+void _requireGeneratedIOSSourceFile(
+  String checkoutDirectory,
+  String relativePath,
+) {
+  final generatedPath = p.join(checkoutDirectory, relativePath);
+  if (FileSystemEntity.typeSync(generatedPath, followLinks: false) !=
+          FileSystemEntityType.file ||
+      File(generatedPath).lengthSync() == 0) {
+    throw IOSReleasePreparationException(
+      "Isolated source generation did not produce required file '$relativePath'.",
+      exitCode: 65,
+    );
+  }
+}
+
+void _requireGeneratedIOSLocalizationFamily(
+  String checkoutDirectory,
+  String entrypointRelativePath,
+  String filePrefix,
+) {
+  final entrypoint = File(p.join(checkoutDirectory, entrypointRelativePath));
+  final outputDirectory = p.dirname(entrypoint.path);
+  final imports =
+      RegExp(r'''^import ['"]([^'"]+\.dart)['"];$''', multiLine: true)
+          .allMatches(entrypoint.readAsStringSync())
+          .map((match) => match.group(1)!)
+          .where((path) => p.basename(path).startsWith("${filePrefix}_"))
+          .toSet();
+  if (imports.isEmpty) {
+    throw IOSReleasePreparationException(
+      "Generated localization entrypoint '$entrypointRelativePath' has no locale imports.",
+      exitCode: 65,
+    );
+  }
+  for (final importedPath in imports) {
+    if (p.basename(importedPath) != importedPath) {
       throw IOSReleasePreparationException(
-        "Rust binding generation did not produce required file '$relativePath'.",
+        "Generated localization entrypoint '$entrypointRelativePath' contains an unsafe import.",
         exitCode: 65,
       );
     }
+    _requireGeneratedIOSSourceFile(
+      checkoutDirectory,
+      p.relative(
+        p.join(outputDirectory, importedPath),
+        from: checkoutDirectory,
+      ),
+    );
   }
 }
 
