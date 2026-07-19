@@ -1,6 +1,6 @@
 # Firebase iOS Distribution for the Self-Hosted Photos App
 
-**Status:** Living document. Updated at the end of every task.
+**Status:** V1 complete as of 2026-07-19. Tasks 3.6–3.8 remain in the V1.1 backlog until a non-owner tester and iPhone are available.
 **Started:** 2026-07-17
 **Owner:** vanton
 **Planning doc:** n/a
