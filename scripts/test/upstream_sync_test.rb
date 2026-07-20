@@ -55,8 +55,8 @@ class PermissiveValidationRunner
       "sync/upstream-2026-07-20-bbbbbbbbbb"
     when ["git", "status", "--porcelain", "--untracked-files=all"]
       @statuses.length > 1 ? @statuses.shift : @statuses.first
-    when ["git", "rev-parse", "HEAD^2"]
-      "b" * 40
+    when ["git", "log", "--first-parent", "--merges", "-n", "50", "--format=%H%x09%P%x09%s"]
+      "#{"d" * 40}\t#{"a" * 40} #{"b" * 40}\tMerge official Ente main at #{"b" * 40}\n"
     when ["git", "ls-files", "-z", "*.dart"]
       "mobile/a.dart\0mobile/b.dart\0"
     when ["git", "rev-parse", "HEAD"]
@@ -75,6 +75,87 @@ class PermissiveValidationRunner
   def execute(*argv, **options)
     @commands << [:execute, argv, options]
     EnteUpstreamSync::CommandResult.new(stdout: "", stderr: "", status: 0)
+  end
+end
+
+class PublishingRunner
+  BRANCH = "sync/upstream-2026-07-20-#{"b" * 10}"
+  COMMIT = "c" * 40
+  MERGE_COMMIT = "d" * 40
+  FORK_SHA = "a" * 40
+  OFFICIAL_SHA = "b" * 40
+
+  attr_reader :commands, :created_body
+
+  def initialize(remote_sha: nil, pull_requests: [], issues: [])
+    @remote_sha = remote_sha
+    @pull_requests = pull_requests
+    @issues = issues
+    @commands = []
+    @created_body = nil
+  end
+
+  def run(*argv, **options)
+    @commands << [:run, argv, options]
+    case argv
+    when ["git", "symbolic-ref", "--quiet", "--short", "HEAD"]
+      BRANCH
+    when ["git", "status", "--porcelain", "--untracked-files=all"]
+      ""
+    when ["git", "rev-parse", "HEAD"]
+      COMMIT
+    when ["git", "log", "--first-parent", "--merges", "-n", "50", "--format=%H%x09%P%x09%s"]
+      "#{MERGE_COMMIT}\t#{FORK_SHA} #{OFFICIAL_SHA}\tMerge official Ente main at #{OFFICIAL_SHA}\n"
+    when ["git", "remote", "get-url", "--all", "origin"]
+      "https://github.com/vanton1/ente.git\n"
+    when ["git", "remote", "get-url", "--all", "--push", "origin"]
+      "https://github.com/vanton1/ente.git\n"
+    when ["git", "remote", "get-url", "--all", "upstream"]
+      "https://github.com/ente/ente.git\n"
+    when ["git", "remote", "get-url", "--all", "--push", "upstream"]
+      "DISABLED\n"
+    when ["git", "fetch", "origin", "main", "--prune"],
+         ["git", "fetch", "origin", BRANCH],
+         ["git", "branch", "--set-upstream-to=origin/#{BRANCH}", BRANCH],
+         ["/usr/bin/gh", "auth", "status", "--hostname", "github.com"]
+      ""
+    when ["git", "rev-parse", "--verify", "origin/main^{commit}"]
+      FORK_SHA
+    when ["git", "ls-remote", "--heads", "origin", "refs/heads/#{BRANCH}"]
+      @remote_sha ? "#{@remote_sha}\trefs/heads/#{BRANCH}\n" : ""
+    when ["/usr/bin/gh", "pr", "list", "--repo", "vanton1/ente", "--head", BRANCH, "--state", "all", "--json", "number,state,url,headRefOid"]
+      JSON.generate(@pull_requests)
+    when ["/usr/bin/gh", "issue", "list", "--repo", "vanton1/ente", "--state", "open", "--limit", "100", "--json", "number,title,body,url,state"]
+      JSON.generate(@issues)
+    else
+      if argv[0, 3] == ["/usr/bin/gh", "pr", "create"]
+        @created_body = argv[argv.index("--body") + 1]
+        "https://github.com/vanton1/ente/pull/99\n"
+      else
+        raise "Unexpected command: #{argv.inspect}"
+      end
+    end
+  end
+
+  def capture(*argv, **options)
+    @commands << [:capture, argv, options]
+    status = argv == ["git", "rev-parse", "--verify", "MERGE_HEAD"] ? 1 : 0
+    EnteUpstreamSync::CommandResult.new(stdout: "", stderr: "", status: status)
+  end
+
+  def execute(*argv, **options)
+    @commands << [:execute, argv, options]
+    expected = [
+      "/usr/bin/git",
+      "push",
+      "git@github.com:vanton1/ente.git",
+      "HEAD:refs/heads/#{BRANCH}",
+    ]
+    raise "Unexpected streaming command: #{argv.inspect}" unless argv == expected
+
+    @remote_sha = COMMIT
+    options.fetch(:output).puts("uploaded")
+    EnteUpstreamSync::CommandResult.new(stdout: "uploaded\n", stderr: "", status: 0)
   end
 end
 
@@ -303,6 +384,123 @@ class SynchronizerTest < Minitest::Test
 
   def result(stdout: "", stderr: "", status:)
     EnteUpstreamSync::CommandResult.new(stdout: stdout, stderr: stderr, status: status)
+  end
+end
+
+class IntegrationStateTest < Minitest::Test
+  def test_finds_verified_merge_below_repair_commits
+    official = "b" * 40
+    runner = FakeRunner.new(
+      ["git", "log", "--first-parent", "--merges", "-n", "50", "--format=%H%x09%P%x09%s"] =>
+        "#{"d" * 40}\t#{"a" * 40} #{official}\tMerge official Ente main at #{official}\n",
+    )
+
+    state = EnteUpstreamSync::IntegrationState.current(runner)
+
+    assert_equal official, state.official_sha
+    assert_equal "a" * 40, state.fork_parent
+  end
+
+  def test_rejects_message_whose_sha_is_not_the_second_parent
+    runner = FakeRunner.new(
+      ["git", "log", "--first-parent", "--merges", "-n", "50", "--format=%H%x09%P%x09%s"] =>
+        "#{"d" * 40}\t#{"a" * 40} #{"e" * 40}\tMerge official Ente main at #{"b" * 40}\n",
+    )
+
+    assert_raises(EnteUpstreamSync::SafetyFailure) do
+      EnteUpstreamSync::IntegrationState.current(runner)
+    end
+  end
+end
+
+class PublisherTest < Minitest::Test
+  TOOLS = { git: "/usr/bin/git", gh: "/usr/bin/gh" }.freeze
+  ISSUE = {
+    "number" => 42,
+    "title" => "Official Ente is ahead",
+    "body" => "#{EnteUpstreamSync::UpstreamIssue::MARKER}\nDrift detected.",
+    "url" => "https://github.com/vanton1/ente/issues/42",
+    "state" => "OPEN",
+  }.freeze
+
+  def test_confirmation_mismatch_performs_no_external_mutation
+    runner = PublishingRunner.new(issues: [ISSUE])
+
+    error = assert_raises(EnteUpstreamSync::SafetyFailure) do
+      publisher(runner, "no\n").publish(validation: validation)
+    end
+
+    assert_includes error.message, "Nothing was pushed"
+    refute runner.commands.any? { |kind, argv, _options| kind == :execute || argv[0, 3] == ["/usr/bin/gh", "pr", "create"] }
+  end
+
+  def test_pushes_only_to_canonical_fork_ssh_url_and_creates_linked_pr
+    runner = PublishingRunner.new(issues: [ISSUE])
+
+    result = publisher(runner, "PUSH #{PublishingRunner::BRANCH}\n").publish(validation: validation)
+
+    assert_equal :published, result.status
+    assert_equal 99, result.pull_request_number
+    assert_equal 42, result.issue_number
+    assert_includes runner.created_body, "Closes #42"
+    assert_includes runner.created_body, PublishingRunner::OFFICIAL_SHA
+    pushes = runner.commands.select { |kind, _argv, _options| kind == :execute }
+    assert_equal 1, pushes.length
+    assert_equal "git@github.com:vanton1/ente.git", pushes.first[1][2]
+  end
+
+  def test_reuses_matching_remote_branch_without_uploading_again
+    runner = PublishingRunner.new(remote_sha: PublishingRunner::COMMIT, issues: [ISSUE])
+
+    result = publisher(runner, "PUSH #{PublishingRunner::BRANCH}\n").publish(validation: validation)
+
+    assert_equal :pull_request_created, result.status
+    refute runner.commands.any? { |kind, _argv, _options| kind == :execute }
+    assert runner.created_body
+  end
+
+  def test_mismatched_remote_branch_stops_before_confirmation
+    runner = PublishingRunner.new(remote_sha: "e" * 40, issues: [ISSUE])
+
+    error = assert_raises(EnteUpstreamSync::SafetyFailure) do
+      publisher(runner, "PUSH #{PublishingRunner::BRANCH}\n").publish(validation: validation)
+    end
+
+    assert_includes error.message, "not validated commit"
+    refute runner.commands.any? { |kind, _argv, _options| kind == :execute }
+  end
+
+  def test_duplicate_marker_issues_stop_closed
+    second = ISSUE.merge("number" => 43, "url" => "https://github.com/vanton1/ente/issues/43")
+    runner = PublishingRunner.new(issues: [ISSUE, second])
+
+    error = assert_raises(EnteUpstreamSync::SafetyFailure) do
+      publisher(runner, "PUSH #{PublishingRunner::BRANCH}\n").publish(validation: validation)
+    end
+
+    assert_includes error.message, "Multiple open"
+  end
+
+  private
+
+  def publisher(runner, input)
+    EnteUpstreamSync::Publisher.new(
+      runner: runner,
+      root: "/repo",
+      tools: TOOLS,
+      input: StringIO.new(input),
+      output: StringIO.new,
+    )
+  end
+
+  def validation
+    EnteUpstreamSync::ValidationResult.new(
+      branch: PublishingRunner::BRANCH,
+      commit: PublishingRunner::COMMIT,
+      official_sha: PublishingRunner::OFFICIAL_SHA,
+      with_builds: false,
+      steps: ["tests", "analysis"],
+    )
   end
 end
 

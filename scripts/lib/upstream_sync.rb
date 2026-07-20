@@ -357,6 +357,44 @@ module EnteUpstreamSync
     keyword_init: true,
   )
 
+  IntegrationState = Struct.new(
+    :merge_commit,
+    :fork_parent,
+    :official_sha,
+    keyword_init: true,
+  ) do
+    MESSAGE_PATTERN = /\AMerge official Ente main at ([0-9a-f]{40})\z/.freeze
+
+    def self.current(runner)
+      history = runner.run(
+        "git",
+        "log",
+        "--first-parent",
+        "--merges",
+        "-n",
+        "50",
+        "--format=%H%x09%P%x09%s",
+      )
+      history.each_line do |line|
+        commit, raw_parents, subject = line.strip.split("\t", 3)
+        match = subject&.match(MESSAGE_PATTERN)
+        next unless match
+
+        parents = raw_parents.to_s.split
+        next unless parents.length == 2
+        next unless parents[1] == match[1]
+
+        return new(
+          merge_commit: commit,
+          fork_parent: parents[0],
+          official_sha: match[1],
+        )
+      end
+      raise SafetyFailure,
+            "No verified 'Merge official Ente main at <SHA>' commit exists on the first-parent history."
+    end
+  end
+
   class Synchronizer
     BRANCH_PREFIX = "sync/upstream-"
 
@@ -465,23 +503,17 @@ module EnteUpstreamSync
         )
       end
 
-      official_sha = @runner.run("git", "rev-parse", "HEAD^2")
-      verify_official_ancestry(official_sha)
+      state = IntegrationState.current(@runner)
+      verify_official_ancestry(state.official_sha)
       status = @runner.run("git", "status", "--porcelain", "--untracked-files=all")
       raise SafetyFailure, "Integration branch is not clean; inspect changes before validation." unless status.empty?
 
       StartResult.new(
         status: :ready_for_validation,
         branch: branch,
-        official_sha: official_sha,
+        official_sha: state.official_sha,
         merge_commit: @runner.run("git", "rev-parse", "HEAD"),
       )
-    rescue CommandFailure => error
-      if error.argv == ["git", "rev-parse", "HEAD^2"]
-        raise SafetyFailure, "Current branch does not end in the required upstream merge commit."
-      end
-
-      raise
     end
 
     private
@@ -621,7 +653,8 @@ module EnteUpstreamSync
       raise SafetyFailure, "Complete or abort the in-progress merge before validation." if merge_head.success?
 
       ensure_clean("before validation")
-      official_sha = @runner.run("git", "rev-parse", "HEAD^2")
+      state = IntegrationState.current(@runner)
+      official_sha = state.official_sha
       verify_ancestor(official_sha)
 
       step("Initialize recursive submodules") do
@@ -776,6 +809,380 @@ module EnteUpstreamSync
           ENV.fetch("PATH", ""),
         ].reject(&:empty?).join(File::PATH_SEPARATOR),
       }
+    end
+  end
+
+  module UpstreamIssue
+    MARKER = "<!-- ente-upstream-sync -->"
+  end
+
+  PublicationResult = Struct.new(
+    :status,
+    :branch,
+    :commit,
+    :official_sha,
+    :issue_number,
+    :pull_request_number,
+    :pull_request_url,
+    keyword_init: true,
+  )
+
+  PublicationContext = Struct.new(
+    :branch,
+    :commit,
+    :official_sha,
+    :fork_sha,
+    :issue,
+    :remote_branch_sha,
+    :pull_request,
+    keyword_init: true,
+  )
+
+  class Publisher
+    DEFAULT_REPOSITORY = Inspector::DEFAULT_FORK_REPOSITORY
+    DEFAULT_ORIGIN = Inspector::DEFAULT_ORIGIN
+    DEFAULT_UPSTREAM = Inspector::DEFAULT_UPSTREAM
+    DEFAULT_BASE_BRANCH = Inspector::DEFAULT_BASE_BRANCH
+    SHA_PATTERN = /\A[0-9a-f]{40}\z/.freeze
+
+    def initialize(
+      runner:,
+      root:,
+      tools:,
+      input: $stdin,
+      output: $stdout,
+      repository: DEFAULT_REPOSITORY,
+      origin: DEFAULT_ORIGIN,
+      upstream: DEFAULT_UPSTREAM,
+      base_branch: DEFAULT_BASE_BRANCH
+    )
+      @runner = runner
+      @root = Pathname(root).expand_path
+      @tools = tools
+      @input = input
+      @output = output
+      @repository = repository.downcase
+      @origin = origin
+      @upstream = upstream
+      @base_branch = base_branch
+    end
+
+    def publish(validation:, issue_number: nil)
+      first = preflight(validation: validation, issue_number: issue_number)
+      if first.pull_request
+        return existing_pull_request_result(first)
+      end
+
+      print_confirmation(first, validation)
+      answer = @input.gets&.strip
+      unless answer == "PUSH #{first.branch}"
+        raise SafetyFailure, "Confirmation did not match. Nothing was pushed and no pull request was created."
+      end
+
+      second = preflight(validation: validation, issue_number: issue_number)
+      ensure_unchanged(first, second)
+      if second.pull_request
+        return existing_pull_request_result(second)
+      end
+
+      pushed = false
+      unless second.remote_branch_sha == second.commit
+        push_branch(second)
+        pushed = true
+      end
+      verify_remote_branch(second.branch, second.commit)
+
+      pull_request = create_pull_request(second, validation)
+      PublicationResult.new(
+        status: pushed ? :published : :pull_request_created,
+        branch: second.branch,
+        commit: second.commit,
+        official_sha: second.official_sha,
+        issue_number: second.issue && second.issue.fetch("number"),
+        pull_request_number: pull_request.fetch("number"),
+        pull_request_url: pull_request.fetch("url"),
+      )
+    rescue CommandFailure => error
+      raise SafetyFailure, "Publication command failed: #{error.message}"
+    end
+
+    private
+
+    def preflight(validation:, issue_number:)
+      branch = @runner.run("git", "symbolic-ref", "--quiet", "--short", "HEAD")
+      unless branch.start_with?(Synchronizer::BRANCH_PREFIX)
+        raise SafetyFailure,
+              "Publication requires a #{Synchronizer::BRANCH_PREFIX}* branch; current branch is #{branch}."
+      end
+
+      merge_head = @runner.capture("git", "rev-parse", "--verify", "MERGE_HEAD")
+      raise SafetyFailure, "Complete or abort the in-progress merge before publication." if merge_head.success?
+
+      status = @runner.run("git", "status", "--porcelain", "--untracked-files=all")
+      raise SafetyFailure, "Publication branch is not clean." unless status.empty?
+
+      commit = @runner.run("git", "rev-parse", "HEAD")
+      unless validation.branch == branch && validation.commit == commit
+        raise SafetyFailure,
+              "Validation evidence does not match current branch and commit. Run validation again."
+      end
+
+      state = IntegrationState.current(@runner)
+      unless validation.official_sha == state.official_sha
+        raise SafetyFailure, "Validation evidence records a different official SHA. Run validation again."
+      end
+
+      validate_remotes
+      @runner.run("git", "fetch", @origin, @base_branch, "--prune")
+      fork_sha = @runner.run("git", "rev-parse", "--verify", "#{@origin}/#{@base_branch}^{commit}")
+      unless fork_sha == state.fork_parent
+        raise SafetyFailure,
+              "#{@origin}/#{@base_branch} changed after integration began. Preserve this branch and start a new synchronization."
+      end
+      verify_ancestor(fork_sha, commit, "fork main")
+      verify_ancestor(state.official_sha, commit, "official main")
+
+      @runner.run(@tools.fetch(:gh), "auth", "status", "--hostname", "github.com")
+      remote_branch_sha = remote_branch_sha(branch)
+      if remote_branch_sha && remote_branch_sha != commit
+        raise SafetyFailure,
+              "Remote branch #{branch} exists at #{remote_branch_sha}, not validated commit #{commit}."
+      end
+
+      pull_requests = github_json(
+        @tools.fetch(:gh),
+        "pr",
+        "list",
+        "--repo",
+        @repository,
+        "--head",
+        branch,
+        "--state",
+        "all",
+        "--json",
+        "number,state,url,headRefOid",
+      )
+      raise SafetyFailure, "GitHub returned multiple pull requests for #{branch}." if pull_requests.length > 1
+
+      pull_request = pull_requests.first
+      if pull_request
+        unless pull_request.fetch("state") == "OPEN" && pull_request.fetch("headRefOid") == commit
+          raise SafetyFailure,
+                "A non-open or mismatched pull request already exists for #{branch}; use a new synchronization branch."
+        end
+        unless remote_branch_sha == commit
+          raise SafetyFailure, "GitHub reports an open pull request but the fork branch is absent or mismatched."
+        end
+      end
+
+      issue = resolve_issue(issue_number)
+      PublicationContext.new(
+        branch: branch,
+        commit: commit,
+        official_sha: state.official_sha,
+        fork_sha: fork_sha,
+        issue: issue,
+        remote_branch_sha: remote_branch_sha,
+        pull_request: pull_request,
+      )
+    end
+
+    def validate_remotes
+      origin_fetch = remote_urls(@origin, push: false)
+      origin_push = remote_urls(@origin, push: true)
+      upstream_fetch = remote_urls(@upstream, push: false)
+      upstream_push = remote_urls(@upstream, push: true)
+
+      validate_github_urls(@origin, "fetch", origin_fetch, @repository)
+      validate_github_urls(@origin, "push", origin_push, @repository)
+      validate_github_urls(@upstream, "fetch", upstream_fetch, Inspector::DEFAULT_OFFICIAL_REPOSITORY)
+      unless upstream_push == [Inspector::DISABLED_PUSH_URL]
+        raise SafetyFailure,
+              "#{@upstream} push URLs must contain only #{Inspector::DISABLED_PUSH_URL}."
+      end
+    end
+
+    def remote_urls(remote, push:)
+      args = ["git", "remote", "get-url", "--all"]
+      args << "--push" if push
+      args << remote
+      @runner.run(*args).lines.map(&:strip).reject(&:empty?)
+    end
+
+    def validate_github_urls(remote, direction, urls, expected)
+      if urls.empty? || urls.any? { |url| GitHubRepository.slug(url) != expected }
+        raise SafetyFailure,
+              "Every #{remote} #{direction} URL must identify #{expected}; found #{urls.join(", ")}."
+      end
+    end
+
+    def verify_ancestor(ancestor, descendant, label)
+      result = @runner.capture("git", "merge-base", "--is-ancestor", ancestor, descendant)
+      return if result.status.zero?
+
+      raise SafetyFailure, "Validated commit does not contain #{label} SHA #{ancestor}."
+    end
+
+    def remote_branch_sha(branch)
+      output = @runner.run("git", "ls-remote", "--heads", @origin, "refs/heads/#{branch}")
+      return nil if output.empty?
+
+      lines = output.lines.map(&:strip).reject(&:empty?)
+      unless lines.length == 1
+        raise SafetyFailure, "Unable to identify one exact remote branch for #{branch}."
+      end
+      sha, ref = lines.first.split(/\s+/, 2)
+      unless sha&.match?(SHA_PATTERN) && ref == "refs/heads/#{branch}"
+        raise SafetyFailure, "Git returned an invalid remote branch record for #{branch}."
+      end
+      sha
+    end
+
+    def verify_remote_branch(branch, expected_sha)
+      actual_sha = remote_branch_sha(branch)
+      return if actual_sha == expected_sha
+
+      raise SafetyFailure,
+            "Push verification failed: #{branch} is #{actual_sha || "absent"}, expected #{expected_sha}."
+    end
+
+    def resolve_issue(issue_number)
+      if issue_number
+        issue = github_json(
+          @tools.fetch(:gh),
+          "issue",
+          "view",
+          issue_number.to_s,
+          "--repo",
+          @repository,
+          "--json",
+          "number,title,body,url,state",
+        )
+        unless issue.fetch("state") == "OPEN" && issue.fetch("body").include?(UpstreamIssue::MARKER)
+          raise SafetyFailure, "Issue ##{issue_number} is not the open upstream-drift tracking issue."
+        end
+        return issue
+      end
+
+      issues = github_json(
+        @tools.fetch(:gh),
+        "issue",
+        "list",
+        "--repo",
+        @repository,
+        "--state",
+        "open",
+        "--limit",
+        "100",
+        "--json",
+        "number,title,body,url,state",
+      ).select { |item| item.fetch("body").include?(UpstreamIssue::MARKER) }
+      if issues.length > 1
+        raise SafetyFailure, "Multiple open upstream-drift issues contain the automation marker."
+      end
+      issues.first
+    end
+
+    def github_json(*argv)
+      raw = @runner.run(*argv)
+      JSON.parse(raw)
+    rescue JSON::ParserError => error
+      raise SafetyFailure, "GitHub returned invalid JSON: #{error.message}"
+    end
+
+    def print_confirmation(context, validation)
+      @output.puts("\nPublication is ready.")
+      @output.puts("Fork repository: #{@repository}")
+      @output.puts("Target: #{@base_branch}")
+      @output.puts("Branch: #{context.branch}")
+      @output.puts("Validated commit: #{context.commit}")
+      @output.puts("Official SHA: #{context.official_sha}")
+      @output.puts("Platform builds: #{validation.with_builds ? "passed" : "not requested"}")
+      @output.puts("Tracking issue: #{context.issue ? "##{context.issue.fetch("number")}" : "none"}")
+      @output.puts("Remote branch: #{context.remote_branch_sha ? "already uploaded at the validated commit" : "will be created"}")
+      @output.puts("No command will merge the pull request.")
+      @output.puts("Type exactly: PUSH #{context.branch}")
+      @output.print("> ")
+    end
+
+    def ensure_unchanged(first, second)
+      fields = %i[branch commit official_sha fork_sha remote_branch_sha]
+      changed = fields.any? { |field| first.public_send(field) != second.public_send(field) }
+      first_issue = first.issue && first.issue.fetch("number")
+      second_issue = second.issue && second.issue.fetch("number")
+      if changed || first_issue != second_issue
+        raise SafetyFailure, "Repository or GitHub state changed during confirmation. Nothing was pushed."
+      end
+    end
+
+    def push_branch(context)
+      ssh_url = "git@github.com:#{@repository}.git"
+      @runner.execute(
+        @tools.fetch(:git),
+        "push",
+        ssh_url,
+        "HEAD:refs/heads/#{context.branch}",
+        chdir: @root,
+        env: {},
+        output: @output,
+      )
+      @runner.run("git", "fetch", @origin, context.branch)
+      @runner.run("git", "branch", "--set-upstream-to=#{@origin}/#{context.branch}", context.branch)
+    end
+
+    def create_pull_request(context, validation)
+      title = "Sync fork with official Ente #{context.official_sha[0, 10]}"
+      body = pull_request_body(context, validation)
+      url = @runner.run(
+        @tools.fetch(:gh),
+        "pr",
+        "create",
+        "--repo",
+        @repository,
+        "--base",
+        @base_branch,
+        "--head",
+        context.branch,
+        "--title",
+        title,
+        "--body",
+        body,
+      ).lines.map(&:strip).find { |line| line.start_with?("https://github.com/") }
+      raise SafetyFailure, "GitHub did not return a pull-request URL." unless url
+
+      number = Integer(url.split("/").last, 10)
+      { "number" => number, "url" => url }
+    rescue ArgumentError
+      raise SafetyFailure, "GitHub returned an invalid pull-request URL: #{url}."
+    end
+
+    def pull_request_body(context, validation)
+      lines = [
+        "## Upstream synchronization",
+        "",
+        "- Fork base: `#{context.fork_sha}`",
+        "- Official Ente: `#{context.official_sha}`",
+        "- Validated commit: `#{context.commit}`",
+        "- Validation gates: #{validation.steps.length} passed",
+        "- Platform builds: #{validation.with_builds ? "passed" : "not requested"}",
+        "",
+        "This pull request was created by the guarded local upstream synchronizer. It was not merged automatically.",
+      ]
+      lines += ["", "Closes ##{context.issue.fetch("number")}"] if context.issue
+      lines.join("\n")
+    end
+
+    def existing_pull_request_result(context)
+      @output.puts("Existing open pull request: #{context.pull_request.fetch("url")}")
+      PublicationResult.new(
+        status: :existing_pull_request,
+        branch: context.branch,
+        commit: context.commit,
+        official_sha: context.official_sha,
+        issue_number: context.issue && context.issue.fetch("number"),
+        pull_request_number: context.pull_request.fetch("number"),
+        pull_request_url: context.pull_request.fetch("url"),
+      )
     end
   end
 
