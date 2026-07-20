@@ -1,12 +1,14 @@
 # Configurable Self-Hosted Mobile Server Architecture
 
-**Status:** As built on 2026-07-14
+**Status:** Current as-built architecture. Behavior and links revalidated on 2026-07-20.
 **Scope:** Ente Photos mobile endpoint selection for the personal self-hosted
 Android flavor and iOS target
 **Living design:**
 [ConfigurableSelfHostedMobileServer.md](ConfigurableSelfHostedMobileServer.md)
 **Operator guide:**
 [SELF_HOSTED_BUILD_GUIDE.md](../mobile/apps/photos/SELF_HOSTED_BUILD_GUIDE.md)
+**Documentation index:**
+[SELF_HOSTED_DOCUMENTATION.md](../mobile/apps/photos/SELF_HOSTED_DOCUMENTATION.md)
 
 ---
 

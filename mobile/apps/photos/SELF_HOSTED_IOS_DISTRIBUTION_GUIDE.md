@@ -1,5 +1,11 @@
 # Self-Hosted iOS Closed-Beta Operations
 
+Start at the [self-hosted mobile documentation index](SELF_HOSTED_DOCUMENTATION.md)
+for document ownership and current release state. This runbook is for the
+operator. Send testers the separate
+[Android and iOS onboarding guide](SELF_HOSTED_TESTER_ONBOARDING_GUIDE.md),
+which contains no operator-only values.
+
 This is the operator runbook for distributing the configurable Ente Photos iOS
 application to the private `trusted-ios-testers` group through Firebase App
 Distribution and Apple Ad Hoc provisioning. It covers release preparation,
@@ -11,6 +17,14 @@ The workflow distributes only the iOS bundle
 `me.vanton.ente.photos.selfhosted`. It does not add a Firebase runtime SDK,
 publish through TestFlight or the App Store, expose the private server to the
 internet, or distribute the Android application.
+
+**Verified baseline (2026-07-20):** marketing version `1.3.59`; Firebase iOS
+build `2161`; owner installation, sign-in, upload/download, update, and
+persistence accepted. A real second iPhone or iPad has not been available, so
+non-owner iOS installation remains unverified. Do not authorize or build from
+an identifier collected without that real device; complete section 4 from the
+beginning when a tester device is available. Every later iOS publication must
+use a strictly higher `CFBundleVersion`.
 
 ## 1. Trust boundaries and safety rules
 
@@ -137,7 +151,7 @@ Profiles** that:
 - the explicit App ID is `me.vanton.ente.photos.selfhosted`;
 - the intended Apple Distribution certificate remains active and its private
   key is available in the local login Keychain;
-- every intended iPhone is enabled in **Devices**;
+- every intended iPhone or iPad is enabled in **Devices**;
 - the manual Ad Hoc profile names the exact App ID, intended distribution
   certificate, and only the currently authorized devices; and
 - the profile and certificate will remain valid for the acceptance window.
@@ -274,46 +288,39 @@ records, performs no Firebase mutation, and writes the ordinary success
 receipt. Never reconcile console screenshots, copied URLs, writable JSON, or
 ambiguous release lists.
 
-## 4. Authorize and onboard an iPhone
+## 4. Authorize and onboard an iOS device
 
-### 4.1 Accept Firebase and register the device
+The tester performs Firebase acceptance, device-profile installation,
+Tailscale setup, application installation, sign-in, and acceptance testing by
+following the [shared onboarding guide](SELF_HOSTED_TESTER_ONBOARDING_GUIDE.md).
+The operator owns the Apple authorization and rebuilt-IPA loop below. Do not
+substitute a Mac identifier, simulator identifier, copied value, or
+screen-provided placeholder for a real tester iPhone or iPad.
 
-The tester must perform the first acceptance on the iPhone they will use:
+### 4.1 Collect and verify the real device registration
 
-1. Open the Firebase invitation email in **Safari on that iPhone**. Sign in
-   with the Google account intended for this beta and accept the invitation.
-   An invitation can be accepted only once; the operator should privately
-   verify which Google identity accepted it.
-2. On the application page, tap **Register device**.
-3. Allow Firebase to download its configuration profile, then install that
-   profile through the iOS Settings application when prompted.
-4. Return to the Firebase App Distribution web clip and confirm that device
-   registration completed.
+After the tester completes the guide's Firebase registration step on the real
+device, receive the new identifier through the Firebase alert or export it
+privately from **App Distribution > Testers & Groups > All testers > Export
+Apple UDIDs**. Before using it:
 
-The Firebase profile collects the iPhone's unique device identifier and adds
-the App Distribution web clip. It does not authorize the application by
-itself. Keep the registration email and exported device list private.
+- verify the tester and physical device through a private channel;
+- confirm the registration is new and belongs to that tester;
+- keep the registration profile, export, device name, and identifier outside
+  Git, release notes, screenshots, public chat, and issue trackers; and
+- check the Apple annual device allowance before consuming a slot.
 
-### 4.2 Register the iPhone with Apple
+The Firebase profile collects the device identifier and installs the App
+Distribution web clip. It does not authorize the application by itself.
 
-The operator receives the new device identifier through the Firebase alert or
-exports it privately from **App Distribution > Testers & Groups > All testers
-> Export Apple UDIDs**. In Apple **Certificates, Identifiers & Profiles >
-Devices**, register the intended iPhone by its device name and identifier.
+### 4.2 Register the device with Apple
 
-Before registration:
+In Apple **Certificates, Identifiers & Profiles > Devices**, register the
+verified iPhone or iPad using its private name and identifier. Avoid duplicate
+or stale device entries. Apple limits registrations per product family and
+membership year; disabling a device during the year does not recover its slot.
 
-- verify the tester and device through a private channel;
-- check the Apple annual device allowance and existing entries;
-- avoid duplicate or stale device names; and
-- never paste the identifier into Git, release notes, a public chat, or an
-  issue tracker.
-
-Apple currently allows a limited number of registered devices per product
-family in each membership year. Disabling a device during the year does not
-restore its slot.
-
-### 4.3 Refresh the Ad Hoc profile
+### 4.3 Refresh the Ad Hoc profile and publish
 
 In Apple **Profiles**, select the manual Ad Hoc profile for the self-hosted App
 ID, choose **Edit**, retain the intended distribution certificate, include the
@@ -328,86 +335,25 @@ export ENTE_IOS_EXPECTED_DEVICE_COUNT="the-exact-positive-count"
 export ENTE_IOS_BUILD_NUMBER="a-higher-positive-build-number"
 ```
 
-Firebase documents that a device-only profile refresh can reuse the same app
-version and build number. This repository's guarded ledger intentionally uses
-a stricter rule: every later publication must increase `CFBundleVersion`.
-Follow the local rule so the release remains unambiguous and installable as an
-update.
+Firebase permits a device-only profile refresh without changing the app build,
+but this repository's guarded ledger is intentionally stricter: every later
+publication must increase `CFBundleVersion`. Prepare, preflight, and publish
+the refreshed release through section 3. Never manually re-sign or upload the
+earlier IPA because its embedded profile does not contain the new device.
 
-Prepare, preflight, and publish the refreshed build through section 3. Never
-manually re-sign or upload the earlier IPA: its embedded profile does not
-contain the new device.
+### 4.4 Complete the private handoff and acceptance
 
-### 4.4 Install the application
+Grant only the required Tailscale host share or membership, create or approve
+an individual Museum account according to server policy, and privately send
+the refreshed Firebase release plus the exact Museum origin. Do not enable a
+public Tailscale Funnel for this beta.
 
-After Firebase notifies the tester that the refreshed build is available:
-
-1. Open the App Distribution web clip using the Google account that accepted
-   the invitation.
-2. Select **Ente Photos Self-Hosted**, review the release notes and source link,
-   and tap **Download**.
-3. If iOS reports **Developer Mode Required**, open **Settings > Privacy &
-   Security > Developer Mode**, enable it, restart the iPhone, unlock it, and
-   confirm **Turn On** with the device passcode.
-4. Launch the installed application.
-
-Developer Mode is required to launch Ad Hoc applications on iOS 16 or later.
-It does not replace Firebase acceptance, Apple device registration, or device
-inclusion in the profile. This application intentionally has no Firebase App
-Distribution SDK; later builds arrive by email and through the web clip, not
-an in-application update prompt.
-
-### 4.5 Grant the minimum Tailscale access
-
-Choose the method that matches the existing tailnet design; this runbook does
-not change access-control policy automatically:
-
-- **Share the Museum host** when the tester needs only the fixed host that
-  serves Museum and object storage. The tester remains in their own tailnet and
-  uses the server's full `*.ts.net` name. Confirm both tailnets' access controls
-  allow the required HTTPS ports.
-- **Invite the tester as a Member** when the deployment requires subnet-router
-  access or multiple tailnet resources. Restrict the Member through the
-  existing access policy and approve the user if user approval is enabled.
-
-Do not enable Tailscale Funnel or expose the Photos/Albums web applications for
-this mobile beta. Share or invite through the Tailscale admin console, then
-privately coordinate acceptance. Unused Tailscale user invitations currently
-expire after 30 days.
-
-On the iPhone, the tester installs the official Tailscale client, signs in with
-their own identity, permits the VPN configuration, accepts the intended invite
-or machine share, and connects Tailscale. Before opening Ente Photos, verify the
-device can open this URL and receive `pong`:
-
-```text
-https://museum-host.tailnet-name.ts.net/ping
-```
-
-If Museum is reachable but uploads fail, verify the separate signed
-object-storage hostname and port from that same iPhone.
-
-### 4.6 Sign in and prove encrypted media flow
-
-The tester uses their own Museum account, not the Firebase, Apple, or Tailscale
-credentials. The compiled server should already be the intended private
-origin. If it must be changed, use the application's Server Settings flow;
-changing a server while signed in requires completing local logout first.
-
-For the controlled acceptance test:
-
-1. Confirm the application shows the intended private server and release
-   version.
-2. Sign in to the tester's individual Museum account.
-3. Upload one non-sensitive test photo while the application is in the
-   foreground.
-4. Wait until the item reports as backed up or synchronized.
-5. Download or export the cloud item and confirm it is readable in Apple
-   Photos.
-6. Force-quit and reopen the application; confirm the account, server binding,
-   cloud library, and readable media remain available.
-7. Report success privately. Do not commit account details, device identifiers,
-   screenshots containing identities, or media.
+Ask the tester to resume the shared guide and report its `/ping`, install,
+Developer Mode, sign-in, upload/download, force-quit, and persistence results.
+This application has no Firebase App Distribution runtime SDK, so later builds
+arrive through Firebase email and the web clip rather than an in-app prompt.
+Use section 7 for failures and request only the minimum redacted diagnostics
+described in the tester guide.
 
 ## 5. First installation and later updates
 
@@ -422,8 +368,8 @@ Keep both installed while proving the Firebase application. Before deleting
 the legacy application:
 
 1. Confirm all intended media is backed up to Museum and can be downloaded.
-2. Confirm the Firebase-installed application passed section 4.6 and survived a
-   force-quit/restart.
+2. Confirm the Firebase-installed application passed the shared tester guide's
+   acceptance test and survived a force-quit/restart.
 3. Confirm the account password, second-factor method, and recovery material
    are available outside the iPhone.
 4. Accept that deleting the legacy application discards its app-local state.
@@ -518,7 +464,7 @@ Apple teams require development- and Ad-Hoc-signed applications to contact
 
 ## 8. Retention and primary references
 
-These external rules were verified on 2026-07-18 and can change:
+These external rules were reverified on 2026-07-20 and can change:
 
 - Firebase tester invitations expire after 30 days if unaccepted; the console
   warns shortly before expiry and can resend them.

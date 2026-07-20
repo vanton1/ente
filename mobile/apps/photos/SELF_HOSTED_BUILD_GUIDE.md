@@ -1,5 +1,11 @@
 # Configurable Self-Hosted Mobile Build Guide
 
+Start at the [self-hosted mobile documentation index](SELF_HOSTED_DOCUMENTATION.md)
+if you need to choose between building, distributing, or testing an existing
+release. This guide is the canonical command reference for operators and
+maintainers who build and audit the applications; it does not contain tester
+invitations or deployment-specific secrets.
+
 This guide builds the personal Ente Photos Android and iOS applications for
 a default Museum HTTPS origin. The applications can later validate and switch
 to another HTTPS Museum origin through their guarded Server Settings page.
@@ -42,24 +48,26 @@ cd "$(git rev-parse --show-toplevel)/mobile/apps/photos"
 ./scripts/build_self_hosted_ios.sh --validate-only
 ```
 
-## 2. Toolchain on this Mac
+## 2. Toolchain variables
 
-The project and CI use Flutter 3.38.10. This checkout currently uses the
-following isolated tools:
+The project and CI use Flutter 3.38.10. Keep personal toolchains outside the
+repository and adapt the private root below to the installation on the build
+Mac:
 
 ```sh
-export FLUTTER_BIN="/private/tmp/ente-flutter-3.38.10-task31/bin/flutter"
-export DART_BIN="/private/tmp/ente-flutter-3.38.10-task31/bin/dart"
+export ENTE_MOBILE_TOOLCHAIN_ROOT="$HOME/.local/share/ente-mobile-toolchain"
+export FLUTTER_BIN="$ENTE_MOBILE_TOOLCHAIN_ROOT/flutter-3.38.10/bin/flutter"
+export DART_BIN="$ENTE_MOBILE_TOOLCHAIN_ROOT/flutter-3.38.10/bin/dart"
 
-export JAVA_HOME="/Users/vanton/projects/ente-android-toolchain/jdk-17.0.19+10/Contents/Home"
-export ANDROID_HOME="/Users/vanton/projects/ente-android-toolchain/android-sdk"
+export JAVA_HOME="$ENTE_MOBILE_TOOLCHAIN_ROOT/jdk-17/Contents/Home"
+export ANDROID_HOME="$ENTE_MOBILE_TOOLCHAIN_ROOT/android-sdk"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 
-export PATH="/Users/vanton/.cargo/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$(dirname "$FLUTTER_BIN"):/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/.cargo/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$(dirname "$FLUTTER_BIN"):/usr/bin:/bin:/usr/sbin:/sbin"
 ```
 
-`/private/tmp` may be cleared after a reboot. Restore the pinned Flutter
-checkout or change `FLUTTER_BIN` and `DART_BIN` if those paths no longer exist.
+`FLUTTER_BIN` and `DART_BIN` may instead point to another private, pinned
+Flutter 3.38.10 installation. Do not commit the private toolchain root.
 
 From the repository root, install the lockfile-pinned Flutter dependencies when
 needed:
@@ -102,10 +110,10 @@ adb install -r -t build/app/outputs/flutter-apk/app-selfhosted-debug.apk
 
 ### Signed release APK
 
-The personal signing material on this Mac is stored outside Git:
+The personal signing material is stored outside Git:
 
 ```text
-/Users/vanton/projects/ente-android-toolchain/signing/ente-photos-selfhosted-release.jks
+$ENTE_MOBILE_TOOLCHAIN_ROOT/signing/ente-photos-selfhosted-release.jks
 ```
 
 The ignored `android/key.properties` file contains only the keystore path and
@@ -147,7 +155,7 @@ are never overwritten and are made read-only:
 
 ```sh
 ./scripts/prepare_self_hosted_android_release.sh \
-  --output-dir "/Users/vanton/projects/ente-android-toolchain/prepared-releases"
+  --output-dir "$ENTE_MOBILE_TOOLCHAIN_ROOT/prepared-releases"
 ```
 
 The command verifies:
@@ -248,12 +256,9 @@ Install it on a connected USB-debugging device:
 adb install -r build/app/outputs/flutter-apk/app-selfhosted-release.apk
 ```
 
-The earlier locked release artifact built for the current local endpoint is
-preserved as historical rollback evidence at:
-
-```text
-/Users/vanton/projects/ente-android-toolchain/artifacts/ente-photos-selfhosted-1.3.59-release.apk
-```
+The earlier locked release artifact built for the original local endpoint may
+be retained in the operator's private artifact archive as historical rollback
+evidence. It is not a current distribution artifact.
 
 Its SHA-256 is:
 

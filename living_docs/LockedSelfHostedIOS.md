@@ -1,15 +1,17 @@
 # Locked Self-Hosted Ente Photos for iOS
 
-**Status:** Living document. Updated at the end of every task.
+**Status:** Complete historical baseline. Superseded by configurable builds on 2026-07-14; retained as append-only evidence.
 **Started:** 2026-07-13
 **Owner:** vanton
 **Planning doc:** n/a
-**Companion docs:** `mobile/apps/photos/README.md`, `docs/docs/self-hosting/installation/post-install/index.md`, `docs/docs/self-hosting/administration/object-storage.md`
+**Companion docs:** `mobile/apps/photos/SELF_HOSTED_DOCUMENTATION.md`, `mobile/apps/photos/README.md`, `docs/docs/self-hosting/installation/post-install/index.md`, `docs/docs/self-hosting/administration/object-storage.md`
 
 > **Historical baseline:** This locked-build milestone remains an append-only
 > record of the artifact verified on 2026-07-13. It was superseded on
-> 2026-07-14 by `living_docs/ConfigurableSelfHostedMobileServer.md`, which keeps
-> the same bundle identifier and supports guarded runtime server changes.
+> 2026-07-14 by `living_docs/ConfigurableSelfHostedMobileServer.md`, which
+> initially kept the legacy bundle identifier and added guarded runtime server
+> changes. The later Firebase initiative replaced the distribution identity
+> with `me.vanton.ente.photos.selfhosted`.
 
 ---
 
@@ -19,7 +21,7 @@
 |------:|----:|-------|:----:|--------|-------|
 | 1 | 1.1 | Align the repository-pinned mobile toolchain and generated bindings | M | 🟢 done | Verified Flutter 3.38.10, native rustup Rust 1.97.0, locked Flutter packages, unchanged generated Rust bindings, and a deployment-clean CocoaPods graph. Refreshed stale plugin spec checksums in `Podfile.lock`. |
 | 1 | 1.2 | Produce an unchanged Photos build for an iOS simulator | S | 🟢 done | Built and signature-verified the unchanged `io.ente.frame.debug` app at `mobile/apps/photos/build/ios/Debug-iphonesimulator/Runner.app` for the arm64 iOS Simulator. Recorded the clean-checkout generation and machine setup prerequisites below. |
-| 1 | 1.3 | Install and verify a local Ente quickstart cluster | S | 🟢 done | Installed the official Docker quickstart outside Git at `/Users/vanton/projects/my-ente`. Verified healthy Museum and PostgreSQL containers, Museum `/ping`, MinIO health, and HTTP 200 responses from the Photos and Albums web applications; restricted generated configuration files and all published HTTP ports to the local Mac. |
+| 1 | 1.3 | Install and verify a local Ente quickstart cluster | S | 🟢 done | Installed the official Docker quickstart outside Git at `<private-quickstart-root>`. Verified healthy Museum and PostgreSQL containers, Museum `/ping`, MinIO health, and HTTP 200 responses from the Photos and Albums web applications; restricted generated configuration files and all published HTTP ports to the local Mac. |
 | 1 | 1.4 | Expose Museum and MinIO through private Tailscale HTTPS | M | 🟢 done | Reused the installed and authenticated Tailscale client, enabled private Serve routes for Museum on HTTPS port 443 and MinIO on HTTPS port 8443, and changed Museum to generate HTTPS object-storage URLs. Verified both TLS routes and Museum-to-MinIO reachability. |
 | 1 | 1.5 | Preflight Museum and object-storage reachability | S | 🟢 done | From an iOS 26.5 Simulator, verified Apple-trusted HTTPS, Museum `/ping`, MinIO health, and a short-lived signed object download through the private hostname. Confirmed quickstart companion-app URLs remain local and unpublished under the core-only scope. |
 | 2 | 2.1 | Add and unit-test the fail-closed endpoint policy | M | 🟢 done | Added compile-time endpoint validation, persistent endpoint binding, foreground/background startup gates, locked mutation rejection, authenticated same-origin enforcement, and a local recovery screen. Verified 18 focused tests under normal and locked defines, all 262 Photos tests, and a clean analyzer run. |
@@ -59,7 +61,7 @@ The supported build path uses a wrapper that validates `ENTE_SELF_HOSTED_ENDPOIN
 
 The wrapper always runs Flutter's configuration-only phase with code signing disabled; the following direct Xcode build owns the complete simulator or device signature. A signed device build can take the connected phone identifier through `ENTE_IOS_DEVICE_ID`, select that device as its destination, and allow Xcode to register it and update its development profile. Omitting the optional device identifier retains the generic device destination for already-provisioned builds. Team, device, certificate, and profile values remain local command inputs or Apple-managed state rather than repository configuration.
 
-The local deployment baseline is Ente's official Docker quickstart in `/Users/vanton/projects/my-ente`. It keeps PostgreSQL private to Docker while exposing Museum at `http://127.0.0.1:8080`, MinIO at `http://127.0.0.1:3200`, Photos web at `http://127.0.0.1:3000`, and Albums web at `http://127.0.0.1:3002`. These loopback HTTP addresses remain local diagnostics only. Tailscale Serve privately publishes Museum on HTTPS port 443 and MinIO on HTTPS port 8443 of one tailnet DNS hostname; the web applications are not published.
+The local deployment baseline is Ente's official Docker quickstart in `<private-quickstart-root>`. It keeps PostgreSQL private to Docker while exposing Museum at `http://127.0.0.1:8080`, MinIO at `http://127.0.0.1:3200`, Photos web at `http://127.0.0.1:3000`, and Albums web at `http://127.0.0.1:3002`. These loopback HTTP addresses remain local diagnostics only. Tailscale Serve privately publishes Museum on HTTPS port 443 and MinIO on HTTPS port 8443 of one tailnet DNS hostname; the web applications are not published.
 
 Museum uses that tailnet hostname and MinIO HTTPS port for all three quickstart buckets, with local-bucket mode disabled and path-style URLs retained. Museum and remote clients therefore use the same TLS endpoint in signed object-storage URLs. The quickstart `socat` sidecar was removed because Museum no longer resolves `localhost:3200` to MinIO.
 
@@ -236,7 +238,7 @@ state.
 
 ### 2026-07-13 — Store the quickstart installation outside Git
 
-**Decision:** Create the generated Ente quickstart installation at `/Users/vanton/projects/my-ente` rather than inside the fork checkout.
+**Decision:** Create the generated Ente quickstart installation at `<private-quickstart-root>` rather than inside the fork checkout.
 
 **Why:** The quickstart directory contains unique database, object-storage, Museum encryption, and JSON Web Token secrets alongside its Compose configuration. Keeping it outside the repository prevents accidental staging or publication.
 

@@ -1,10 +1,10 @@
 # Configurable Server for Self-Hosted Ente Photos Mobile Apps
 
-**Status:** Living document. Updated at the end of every task.
+**Status:** Complete historical implementation record. V1 finished on 2026-07-14; later physical-device and distribution proof is linked from the current documentation index.
 **Started:** 2026-07-14
 **Owner:** vanton
 **Planning doc:** n/a
-**Companion docs:** `living_docs/LockedSelfHostedIOS.md`, `living_docs/LockedSelfHostedAndroid.md`, `living_docs/ConfigurableSelfHostedMobileServerArchitecture.md`, `mobile/apps/photos/SELF_HOSTED_BUILD_GUIDE.md`, `docs/docs/self-hosting/administration/reverse-proxy.md`, `docs/docs/self-hosting/administration/object-storage.md`
+**Companion docs:** `mobile/apps/photos/SELF_HOSTED_DOCUMENTATION.md`, `living_docs/LockedSelfHostedIOS.md`, `living_docs/LockedSelfHostedAndroid.md`, `living_docs/ConfigurableSelfHostedMobileServerArchitecture.md`, `mobile/apps/photos/SELF_HOSTED_BUILD_GUIDE.md`, `docs/docs/self-hosting/administration/reverse-proxy.md`, `docs/docs/self-hosting/administration/object-storage.md`
 
 ---
 
@@ -111,7 +111,7 @@ Rollback is straightforward before a successful switch: revert a task or reinsta
 
 | Item | Status | Why |
 |------|--------|-----|
-| Physical Android device verification | V1.1 backlog | The signed release artifact can be audited now, while installation remains blocked until a device is available. |
+| Physical Android device verification | Completed later | The locked release was verified on a physical Android device on 2026-07-16, and the renamed Firebase build later passed owner and non-owner device acceptance. See `living_docs/LockedSelfHostedAndroid.md` and `living_docs/FirebaseAndroidDistribution.md`. |
 | Named server profiles, history, or frequent account switching | Out of scope | The owner needs an occasional personal migration with one active origin, not a multi-server account manager. |
 | HTTP or certificate-bypass support for local networks | Out of scope | Device-trusted HTTPS is the security boundary selected for both mobile platforms. |
 | Changing servers while retaining credentials or local account databases | Out of scope | Server identity and encrypted account state must not be mixed across origins. |
@@ -122,6 +122,8 @@ Rollback is straightforward before a successful switch: revert a task or reinsta
 | App Store, Google Play, TestFlight, or other managed distribution | Out of scope | The existing personal signing and sideloading workflow remains the supported path. |
 
 **Status values:**
+- `Completed later` — originally deferred here and subsequently verified by a
+  linked follow-on initiative.
 - `V1.1 backlog` — deferred but planned for the next milestone.
 - `Out of scope` — will not be done in this initiative; distinct from deferred work.
 
@@ -345,7 +347,7 @@ _None._
   iOS retained its active local binding and opened without a startup diagnostic.
 - A Tailscale IP is not interchangeable with its MagicDNS hostname for HTTPS.
   Museum remained healthy through the `.ts.net` origin while the app correctly
-  rejected `100.100.190.42` because Tailscale Serve could not establish trusted
+  rejected the private bare IP because Tailscale Serve could not establish trusted
   TLS for the bare IP.
 - Artifact verification needs both compile-time and runtime evidence. Wrapper
   guard tests and kernel inspection establish the build inputs; package,

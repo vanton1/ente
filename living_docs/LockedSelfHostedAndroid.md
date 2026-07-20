@@ -1,15 +1,17 @@
 # Locked Self-Hosted Ente Photos for Android
 
-**Status:** Living document. Updated at the end of every task.
+**Status:** Complete historical baseline. Superseded by configurable builds on 2026-07-14; retained as append-only evidence.
 **Started:** 2026-07-13
 **Owner:** vanton
 **Planning doc:** n/a
-**Companion docs:** `living_docs/LockedSelfHostedIOS.md`, `mobile/apps/photos/README.md`, `docs/docs/self-hosting/installation/post-install/index.md`, `docs/docs/self-hosting/administration/object-storage.md`
+**Companion docs:** `mobile/apps/photos/SELF_HOSTED_DOCUMENTATION.md`, `living_docs/LockedSelfHostedIOS.md`, `mobile/apps/photos/README.md`, `docs/docs/self-hosting/installation/post-install/index.md`, `docs/docs/self-hosting/administration/object-storage.md`
 
 > **Historical baseline:** This locked-build milestone remains an append-only
 > record of the artifacts verified on 2026-07-13. It was superseded on
-> 2026-07-14 by `living_docs/ConfigurableSelfHostedMobileServer.md`, which keeps
-> the same package identities and supports guarded runtime server changes.
+> 2026-07-14 by `living_docs/ConfigurableSelfHostedMobileServer.md`, which
+> initially kept the legacy package identities and added guarded runtime server
+> changes. The later Firebase initiative replaced the release identity with
+> `me.vanton.ente.photos.selfhosted`.
 
 ---
 
@@ -18,7 +20,7 @@
 | Phase | Task | Title | Size | Status | Notes |
 |------:|----:|-------|:----:|--------|-------|
 | 1 | 1.1 | Align the Android toolchain and build an unchanged debug APK | M | 🟢 done | Installed a checksum-verified ARM64 Temurin 17.0.19 JDK and isolated Android SDK outside Git, including API 36, Build Tools 36, Platform Tools 37, pinned NDK 28.2, and transitive compatibility components. Built the unchanged `independentDebug` APK with rustup first on `PATH`; verified package `io.ente.photos.independent.debug`, minimum API 26, target API 36, Android debug signing, ARMv7/ARM64 libraries, and SHA-256 `d34db3323e4c500bfdf44b392c136bbb27ebc156b7a7cc7afa812ec571f544bc`. |
-| 1 | 1.2 | Boot an emulator and preflight private Museum and MinIO HTTPS | S | 🟢 done | Created and clean-booted the isolated `ente_api36_arm64` Pixel 7 AVD with Android 16/API 36 and Google APIs ARM64. From inside Android, resolved `macbook-pro-2.tailcfdac8.ts.net` to private address `100.100.190.42`; Android's trust store completed HTTPS to Museum `/ping` and MinIO `/minio/health/live`, both with HTTP 200 and TLS 1.3 `TLS_AES_128_GCM_SHA256`. Removed the temporary diagnostic and shut the emulator down cleanly while preserving the AVD. |
+| 1 | 1.2 | Boot an emulator and preflight private Museum and MinIO HTTPS | S | 🟢 done | Created and clean-booted the isolated `ente_api36_arm64` Pixel 7 AVD with Android 16/API 36 and Google APIs ARM64. From inside Android, resolved the private tailnet hostname to its private address; Android's trust store completed HTTPS to Museum `/ping` and MinIO `/minio/health/live`, both with HTTP 200 and TLS 1.3 `TLS_AES_128_GCM_SHA256`. Removed the temporary diagnostic and shut the emulator down cleanly while preserving the AVD. |
 | 2 | 2.1 | Add the self-hosted flavor and guarded Android build wrapper | M | 🟢 done | Added the `selfhosted` flavor with release application ID `com.vanton1.ente.photos.selfhosted`, the normal `.debug` suffix for debug builds, a no-referrer fallback for the flavor-aware install-source plugin, and the standard launcher manifest overlay. Added a guarded APK wrapper that reuses the Dart endpoint validator, injects only `lockedEndpoint=true` plus the canonical endpoint, and rejects caller flavor or Dart-define overrides. Gradle exposed self-hosted debug/profile/release tasks alongside every existing flavor, generated both expected application IDs, and left the official flavor blocks unchanged. |
 | 2 | 2.2 | Test the Android flavor, wrapper, endpoint lock, and APK identity | M | 🟢 done | Passed all 20 endpoint-policy and developer-settings tests in both normal and real locked-define modes. Verified one canonical wrapper invocation and nine fail-closed cases covering missing or unsafe endpoints, validation arity, Dart-define forms, and flavor overrides. Built and audited the 554,898,085-byte `selfhostedDebug` APK: package `com.vanton1.ente.photos.selfhosted.debug`, minimum API 26, target API 36, Android Debug signature, ARMv7/ARM64/x86_64 libraries, intact ZIP, canonical local hostname and lock policy in the Flutter kernel, correct launcher merge, and SHA-256 `1bf6391069960ef39c6bf15b8809480778bc13aa9cd8b4b321318e5e777a14cb`. Rebuilt `independentDebug` and confirmed its original package, SDK range, ABIs, and signer; SHA-256 `8d6247d670940d2ee91f31f90d37c7eea6e0d98f25fd916f3257fcf94ae97658`. |
 | 3 | 3.1 | Verify the locked Android build end to end in an emulator | M | 🟢 done | Installed the checksum-audited local-server APK on the API 36 ARM64 emulator and verified the initial server identity, account recovery/login, and persisted authentication across both an app cold start and a full emulator restart. Uploaded a controlled image; Museum recorded the self-hosted debug package creating its collection, obtaining signed object URLs, and committing encrypted file metadata with HTTP 200. After the source disappeared from Android shared storage, a cold-started app requested `/files/download/10000005`, received the signed-object redirect, and rendered the decrypted full image. An in-place same-package build for `https://other.example` stopped on the local endpoint-binding diagnostic before creating a network client; Museum recorded zero package requests after launch. Reinstalling the preserved local-server APK retained the session and returned to home. Restored the canonical 554,898,085-byte output with SHA-256 `1bf6391069960ef39c6bf15b8809480778bc13aa9cd8b4b321318e5e777a14cb`, then shut down the preserved AVD. |
@@ -131,7 +133,7 @@ state.
 
 ### 2026-07-13 — Keep Android signing secrets in the login Keychain
 
-**Decision:** Store the personal release keystore under `/Users/vanton/projects/ente-android-toolchain/signing`, keep its generated password in the macOS login Keychain service `ente-photos-selfhosted-release`, and place only the absolute keystore path and alias in ignored `android/key.properties`.
+**Decision:** Store the personal release keystore under `<private-toolchain-root>/signing`, keep its generated password in the macOS login Keychain service `ente-photos-selfhosted-release`, and place only the absolute keystore path and alias in ignored `android/key.properties`.
 
 **Why:** Gradle already supports combining local properties with `SIGNING_*` environment variables. Retrieving the password from Keychain only for the build avoids committing it or keeping it in a plaintext properties file while preserving a reusable local signing identity.
 
@@ -163,7 +165,7 @@ state.
 
 ### 2026-07-13 — Install an isolated Android toolchain outside Git
 
-**Decision:** Keep the Android JDK and SDK under `/Users/vanton/projects/ente-android-toolchain`, reference the SDK through ignored local Gradle properties and command environment, and put the existing rustup shims before the broken Homebrew Rust installation during builds.
+**Decision:** Keep the Android JDK and SDK under `<private-toolchain-root>`, reference the SDK through ignored local Gradle properties and command environment, and put the existing rustup shims before the broken Homebrew Rust installation during builds.
 
 **Why:** The Mac had no Android SDK or JDK 17, while its Intel Homebrew Java 24 and Rust 1.84 installations do not match the project and the Rust installation aborts against its current LLVM. Checksum-verified isolated tools preserve unrelated system and repository configuration while producing the unchanged Android baseline.
 

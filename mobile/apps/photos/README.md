@@ -59,6 +59,11 @@ You can alternatively install the build from PlayStore or F-Droid.
 
 To build a release APK, [setup your keystore](https://docs.flutter.dev/deployment/android#create-an-upload-keystore) and run `flutter build apk --release --flavor independent`. For iOS, use `flutter build ios`.
 
+For the fork's configurable self-hosted applications, start with the
+[self-hosted mobile documentation index](SELF_HOSTED_DOCUMENTATION.md). It
+separates build commands, Android and iOS operator runbooks, the shareable
+tester guide, current release state, architecture, and historical evidence.
+
 ### Configurable self-hosted Android build
 
 Use the checked-in wrapper to build an Android APK with a default Museum origin
@@ -86,7 +91,8 @@ the `SIGNING_*` environment variables.
 See the [configurable mobile build guide](SELF_HOSTED_BUILD_GUIDE.md) for signed
 release preparation and the
 [closed-beta operations guide](SELF_HOSTED_ANDROID_DISTRIBUTION_GUIDE.md) for
-guarded Firebase publication, tester onboarding, updates, and recovery.
+guarded Firebase publication, access, updates, and recovery. Tester actions are
+in the [shared onboarding guide](SELF_HOSTED_TESTER_ONBOARDING_GUIDE.md).
 
 ### Configurable self-hosted iOS build
 
@@ -149,7 +155,9 @@ do not permit Xcode to update Apple provisioning state. See the
 [configurable mobile build guide](SELF_HOSTED_BUILD_GUIDE.md#manually-signed-ad-hoc-archive-and-ipa)
 for the complete private-input and non-overwriting workflow, and the
 [iOS closed-beta operations guide](SELF_HOSTED_IOS_DISTRIBUTION_GUIDE.md) for
-guarded Firebase publication, Apple device onboarding, updates, and recovery.
+guarded Firebase publication, Apple device authorization, updates, and
+recovery. Tester actions are in the
+[shared onboarding guide](SELF_HOSTED_TESTER_ONBOARDING_GUIDE.md).
 
 ### Updating dependencies
 

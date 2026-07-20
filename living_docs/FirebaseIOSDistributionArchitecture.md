@@ -1,5 +1,10 @@
 # Self-Hosted Ente Photos iOS Distribution Architecture
 
+**Status:** Current owner-verified architecture as of 2026-07-20. Non-owner
+iOS device acceptance remains explicitly deferred.
+**Documentation index:**
+[SELF_HOSTED_DOCUMENTATION.md](../mobile/apps/photos/SELF_HOSTED_DOCUMENTATION.md)
+
 This document describes the iOS distribution system as it exists after the owner baseline and first in-place update were verified. It is an operator-facing architecture companion, not a place to store signing identities, tester details, Firebase bindings, private hostnames, or credentials.
 
 The central design is simple: build one auditable Ad Hoc IPA from pushed source, preserve it as immutable evidence, and publish those exact bytes through Firebase only after a separate guarded confirmation. Firebase delivers the application; it does not participate in application runtime, authentication, media encryption, or server access.
@@ -272,7 +277,7 @@ Rollback is always forward: every changed IPA, including a profile-only rebuild 
 
 ## 10. Deferred V1.1 proof
 
-The owner baseline, Firebase install, and in-place update are verified. A real non-owner device is intentionally deferred until a tester and iPhone are available. V1.1 must complete the whole dependency chain rather than infer success from the owner device:
+The owner baseline, Firebase install, and in-place update are verified. A real non-owner device is intentionally deferred until a real tester iPhone or iPad is available. A previously exported but unverified identifier is not valid device evidence and must not be used for provisioning. V1.1 must complete the whole dependency chain rather than infer success from the owner device:
 
 1. Register one invited non-owner tester device privately.
 2. Refresh the Ad Hoc profile, prepare a higher-build IPA, audit it, and publish it through the guarded path.
@@ -290,4 +295,3 @@ Until those steps are observed, the system is proven for owner operation and upd
 - [`prepare_self_hosted_ios_release_test.dart`](../mobile/apps/photos/test/scripts/prepare_self_hosted_ios_release_test.dart) — immutable preparation tests
 - [`publish_self_hosted_ios_release_test.dart`](../mobile/apps/photos/test/scripts/publish_self_hosted_ios_release_test.dart) — guarded publication and reconciliation tests
 - [`self_hosted_ios_identity_test.dart`](../mobile/apps/photos/test/scripts/self_hosted_ios_identity_test.dart) — self-hosted identity and core-only target tests
-

@@ -1,5 +1,11 @@
 # Self-Hosted Android Closed-Beta Operations
 
+Start at the [self-hosted mobile documentation index](SELF_HOSTED_DOCUMENTATION.md)
+for document ownership and current release state. This runbook is for the
+operator. Send testers the separate
+[Android and iOS onboarding guide](SELF_HOSTED_TESTER_ONBOARDING_GUIDE.md),
+which contains no operator-only values.
+
 This is the operator runbook for distributing the configurable Ente Photos
 Android application to the private `trusted-testers` group through Firebase
 App Distribution. It covers release preparation, publication, tester access,
@@ -10,6 +16,11 @@ The workflow distributes only the Android package
 `me.vanton.ente.photos.selfhosted`. It does not add a Firebase runtime SDK,
 publish the application through Google Play, expose the private server to the
 internet, or distribute the iOS application.
+
+**Verified baseline (2026-07-20):** source version `1.3.59+2159`; Firebase
+Android build `2159`; owner and non-owner installation, sign-in,
+upload/download, and persistence accepted. Every later Android publication
+must use a strictly higher version code.
 
 ## 1. Trust boundaries and safety rules
 
@@ -245,75 +256,28 @@ writes the ordinary read-only success receipt with
 `noUploadPerformed: true`, and cannot upload or notify testers. A mismatch or
 ambiguous match writes nothing.
 
-## 4. Tester onboarding
+## 4. Onboard and accept a tester
 
-### 4.1 Grant the minimum Tailscale access
+The tester-facing sequence lives only in the
+[shared onboarding guide](SELF_HOSTED_TESTER_ONBOARDING_GUIDE.md). The operator
+completes this private handoff checklist:
 
-Choose the method that matches the existing tailnet design; this runbook does
-not change access-control policy automatically:
+1. Add the intended identity to Firebase group `trusted-testers` and verify
+   there are no unexpected members.
+2. Grant only the Tailscale host share or membership required by the deployment;
+   do not enable a public Funnel for this beta.
+3. Create or approve an individual Museum account according to the server's
+   account policy. Never share the owner's account.
+4. Send the Firebase invitation, required Tailscale instructions, exact Museum
+   origin, and the shared tester guide through a private channel.
+5. Privately verify the identity that accepted each invitation and require the
+   guide's `/ping`, install, sign-in, upload/download, restart, and persistence
+   acceptance result before declaring the release usable.
 
-- **Share the Museum host** when the tester needs only the fixed host that
-  serves Museum and object storage. The tester remains in their own tailnet and
-  uses the server's fully qualified `*.ts.net` name. Confirm both tailnets'
-  access controls allow the required HTTPS ports.
-- **Invite the tester as a Member** when the deployment requires subnet-router
-  access or access to multiple tailnet resources. Restrict the Member through
-  the existing access policy and approve the user if user approval is enabled.
-
-Do not enable Tailscale Funnel or expose the Photos/Albums web applications for
-this mobile beta. Share or invite through the Tailscale admin console, then
-privately coordinate acceptance. Unused Tailscale user and machine-share
-invites currently expire after 30 days.
-
-On the Android device, the tester installs the official Tailscale client, signs
-in with their own identity, accepts the intended invitation or machine share,
-and connects Tailscale. Before installing Ente Photos, verify the device can
-open this URL and receive `pong`:
-
-```text
-https://museum-host.tailnet-name.ts.net/ping
-```
-
-If Museum is reachable but uploads fail, verify the separate signed
-object-storage hostname and port from that same device.
-
-### 4.2 Accept Firebase and install the APK
-
-The tester must:
-
-1. Open the Firebase App Distribution invitation and accept it using the Google
-   account they intend to keep using for this beta. Firebase permits acceptance
-   with a Google account other than the invited address, so the operator should
-   verify the accepted identity privately.
-2. Open the test-app experience from the email or
-   `https://appdistribution.firebase.google.com` using that same Google account.
-3. Select **Ente Photos Self-Hosted**, review the release notes and source link,
-   choose **Download**, and follow Android's installation prompts.
-4. Confirm the installed application ID is
-   `me.vanton.ente.photos.selfhosted` when collecting diagnostic device output.
-
-This build intentionally has no Firebase App Distribution runtime SDK. Updates
-arrive through Firebase email and the tester web experience, not an in-app
-update prompt.
-
-### 4.3 Sign in and prove encrypted media flow
-
-The tester uses their own Museum account, not the Firebase or Tailscale
-credentials. The compiled server should already be the intended private origin.
-If it must be changed, use the app's Server Settings flow; changing a server
-while signed in requires completing local logout first.
-
-For the controlled acceptance test:
-
-1. Confirm the app shows the intended private server and release version.
-2. Sign in to the tester's individual Museum account.
-3. Upload one non-sensitive test photo while the app is in the foreground.
-4. Wait until the item reports as backed up/synchronized.
-5. Remove only the device-local copy, then download or open the cloud copy.
-6. Force-stop and reopen the app; confirm the account, server binding, and cloud
-   item remain available.
-7. Report success privately. Do not commit account details, device identifiers,
-   screenshots containing identities, or media.
+The application intentionally has no Firebase App Distribution runtime SDK.
+Updates arrive through Firebase email and the tester web experience, not an
+in-app update prompt. If an acceptance step fails, use section 7 and request
+only the minimum redacted diagnostic information described in the tester guide.
 
 ## 5. First installation and later updates
 
@@ -408,7 +372,7 @@ still recovered by signing in to the same server account.
 
 ## 8. Retention and primary references
 
-These external rules were verified on 2026-07-17 and can change:
+These external rules were reverified on 2026-07-20 and can change:
 
 - Firebase tester invitations expire after 30 days if unaccepted; the console
   warns shortly before expiry and can resend them.
