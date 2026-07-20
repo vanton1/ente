@@ -9,6 +9,7 @@ distributing a release remain separate workflows.
 
 Related documents:
 
+- [Canonical operator runbook](../UPSTREAM_SYNC.md)
 - [Self-hosted mobile documentation index](../mobile/apps/photos/SELF_HOSTED_DOCUMENTATION.md)
 - [Configurable-server architecture](ConfigurableSelfHostedMobileServerArchitecture.md)
 - [Upstream synchronization implementation record](UpstreamEnteSynchronization.md)

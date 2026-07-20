@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "pathname"
 require "yaml"
 
 class UpstreamSyncWorkflowContractTest < Minitest::Test
@@ -58,5 +59,37 @@ class UpstreamSyncWorkflowContractTest < Minitest::Test
 
   def steps
     detect_job.fetch("steps")
+  end
+end
+
+class UpstreamSyncDocumentationContractTest < Minitest::Test
+  ROOT = Pathname(File.expand_path("../..", __dir__))
+  DOCUMENTS = [
+    ROOT.join("UPSTREAM_SYNC.md"),
+    ROOT.join("mobile/apps/photos/SELF_HOSTED_DOCUMENTATION.md"),
+    ROOT.join("living_docs/UpstreamEnteSynchronizationArchitecture.md"),
+  ].freeze
+
+  def test_local_links_in_current_sync_documents_resolve
+    DOCUMENTS.each do |document|
+      source = document.read
+      source.scan(/\[[^\]]+\]\(([^)]+)\)/).flatten.each do |target|
+        path = target.split("#", 2).first
+        next if path.empty? || path.match?(%r{\A[a-z]+://}i)
+
+        assert document.dirname.join(path).cleanpath.exist?, "Broken link #{target} in #{document}"
+      end
+    end
+  end
+
+  def test_runbook_exposes_every_operator_state_and_hard_boundary
+    source = ROOT.join("UPSTREAM_SYNC.md").read
+
+    %w[check start resume validate publish run].each do |command|
+      assert_includes source, "sync_upstream.sh #{command}"
+    end
+    assert_includes source, "never approves or merges"
+    assert_includes source, "test_upstream_sync.sh"
+    assert_includes source, "https://photos.example.com"
   end
 end
