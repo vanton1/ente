@@ -1,0 +1,52 @@
+name: Upstream sync drift
+
+on:
+    schedule:
+        - cron: "17 6 * * *"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    issues: write
+
+concurrency:
+    group: upstream-sync-drift
+    cancel-in-progress: false
+
+jobs:
+    detect:
+        if: github.repository == 'vanton1/ente'
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - name: Checkout fork main
+              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              with:
+                  ref: main
+                  fetch-depth: 0
+                  persist-credentials: false
+
+            - name: Fetch official Ente main
+              run: |
+                  git remote add upstream https://github.com/ente/ente.git
+                  git remote set-url --push upstream DISABLED
+                  git fetch origin main --prune
+                  git fetch upstream main
+
+            - name: Calculate guarded drift report
+              run: ./scripts/sync_upstream.sh check --no-fetch --json | tee "$RUNNER_TEMP/upstream-drift.json"
+
+            - name: Reconcile the tracking issue
+              uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+              with:
+                  script: |
+                      const fs = require("node:fs");
+                      const { reconcile } = require("./.github/scripts/upstream-sync-issue.cjs");
+                      const reportPath = `${process.env.RUNNER_TEMP}/upstream-drift.json`;
+                      const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+                      const result = await reconcile({ github, context, report });
+                      core.info(`Upstream drift issue: ${result.action}${result.number ? ` #${result.number}` : ""}`);
+                      await core.summary
+                          .addHeading("Upstream synchronization drift")
+                          .addRaw(`Result: ${result.action}${result.url ? ` — ${result.url}` : ""}`)
+                          .write();
