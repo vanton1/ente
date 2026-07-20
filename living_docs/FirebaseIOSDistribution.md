@@ -1,6 +1,6 @@
 # Firebase iOS Distribution for the Self-Hosted Photos App
 
-**Status:** V1 complete as of 2026-07-19. V1.1 Task 3.6 is complete; Tasks 3.7–3.8 remain for tester-compatible publication and acceptance.
+**Status:** V1 complete as of 2026-07-19. V1.1 Tasks 3.6–3.8 are deferred because no real second iPhone or iPad is available.
 **Started:** 2026-07-17
 **Owner:** vanton
 **Planning doc:** n/a
@@ -34,8 +34,8 @@
 | 3 | 3.3 | Retire the owner's legacy iOS installation | S | 🟢 done | Confirmed the replacement's bidirectional cloud sync plus restart persistence and the owner's safe copy of the local account password and recovery key. A private installed-app inventory found the legacy `com.vanton1.ente.photos.selfhosted` bundle already absent and the verified Firebase build `2160` present, so no uninstall command or app-local migration was performed. |
 | 3 | 3.4 | Prepare and publish an in-place iOS update | M | 🟢 done | Verified local and private Museum/storage health, then prepared and published `1.3.59` (`2161`) from pushed commit `d61b831c33` with the same bundle, configurable server policy, Apple team, one-device profile, and signing certificate. Two preparation attempts failed safely before artifact creation when the command omitted the documented pinned Flutter and rustup PATH inputs; the corrected isolated build generated every ignored source, remained Git-clean, and produced a mode-`0444` 88,638,092-byte IPA/manifest pair with SHA-256 `7451689e8f3abb7e158fe90d3237095702606cb23d7b821d34d618a07f3cfddc`. Independent contract checks and the non-mutating Firebase preflight passed. After exact confirmation, one publication created the release and a unique mode-`0444` success receipt with all three references and no partial attempt; the `2160` receipt remained unchanged. |
 | 3 | 3.5 | Verify state retention across the Firebase update | M | 🟢 done | Private device inventories confirmed Firebase replaced build `2160` with `2161` under the same bundle without deleting the application. On first launch after the update, the owner remained authenticated to the same configurable local server with the existing cloud library intact. A new iPhone upload appeared in the local Photos web app, a different web upload synchronized and decrypted on the iPhone, and a forced process restart preserved the account, server binding, library, and readable test media. |
-| 3 | 3.6 | Register one non-owner tester device | S | 🟢 done | Added exactly one previously approved non-owner tester to `trusted-ios-testers`, and the tester accepted the invitation and completed Firebase's iOS registration flow. A private export compared Firebase's project-level tester-device inventory with the owner-only Ad Hoc profile, found exactly one new iPhone, and wrote only that device to a mode-`0444` Apple-import file under a mode-`0700` external directory. The owner then registered the exact exported device in Apple's inventory and confirmed it enabled. No tester identity, UDID, Firebase binding, profile, or credential entered Git. |
-| 3 | 3.7 | Refresh provisioning and publish a tester-compatible build | M | ⚪ not started | Deferred to V1.1 with Task 3.6 because a real additional device is required. Create a profile containing the authorized tester device, rebuild with a higher `CFBundleVersion`, re-audit the IPA, and publish a distinct immutable release. |
+| 3 | 3.6 | Register one non-owner tester device | S | 🔴 blocked / needs decision | The intended tester joined `trusted-ios-testers`, accepted the invitation, and produced one privately exported registration identifier that was added to Apple's inventory. The owner later clarified that no real second iPhone or iPad exists, so the identifier cannot be accepted as evidence of a non-owner iOS device and must not enter a provisioning profile. Firebase-group and Apple-inventory cleanup require separate explicit approval; no identity or identifier entered Git. |
+| 3 | 3.7 | Refresh provisioning and publish a tester-compatible build | M | ⚪ not started | Deferred because Task 3.6 has no verified second iPhone or iPad. The downloaded profile was rejected before private storage, installation, signing, preparation, or publication; the owner-only profile and Firebase build `2161` remain authoritative. Resume only after a real non-owner iOS device completes registration. |
 | 3 | 3.8 | Verify a non-owner tester's installation | M | ⚪ not started | Deferred to V1.1 with Tasks 3.6–3.7. Confirm Firebase acceptance, Developer Mode, private-network access, an individual Museum account, installation, and one controlled encrypted upload/download without storing tester evidence in Git. |
 | 3 | 3.9 | Document the as-built iOS distribution architecture | S | 🟢 done | Added `FirebaseIOSDistributionArchitecture.md`, a plain-language as-built companion covering the independent Git/operator/Apple/artifact/Firebase/device/private-network/Museum trust boundaries; core-only application identity; pinned isolated preparation; typed-confirmation publication and ambiguous-success reconciliation; verified in-place update state retention; runtime data flow; evidence/privacy rules; failure recovery; forward rollback; operator checklists; and the explicitly deferred V1.1 non-owner proof. All relative links resolve, required sections are present, the Markdown diff is clean, and the changed text contains no screened personal path, email, private hostname, or Firebase App ID. |
 
@@ -234,7 +234,7 @@ Primary external references are Apple's [device registration limits](https://dev
 
 | Item | Status | Why |
 |---|---|---|
-| Refresh provisioning, publish, and verify one non-owner tester (Tasks 3.7–3.8) | V1.1 backlog | Task 3.6 registered the real tester device; profile expansion, a higher-build publication, and device acceptance remain separate approval-gated tasks. |
+| Register, provision, publish for, and verify one non-owner iOS device (Tasks 3.6–3.8) | V1.1 backlog | No real second iPhone or iPad is available. Resume only when a non-owner device can complete Firebase registration and physical acceptance; do not use the current unverified identifier or downloaded profile. |
 | Automate archive preparation or Firebase publication in continuous integration | V1.1 backlog | V1 first proves Apple signing, immutable preparation, and publication locally without introducing remote Cytech or Firebase credentials. |
 | Add proactive scheduled notifications for certificate or profile expiry | V1.1 backlog | V1 exposes validity during every audit and documents operator checks; remote scheduling requires a separate notification and credential design. |
 | Preserve a durable binary archive beyond local immutable artifacts and Firebase retention | V1.1 backlog | V1 retains prepared IPAs, manifests, and receipts locally; off-machine retention requires a separate storage and access decision. |
@@ -258,6 +258,22 @@ Primary external references are Apple's [device registration limits](https://dev
 ## 5. Decision log
 
 > Append-only. Newest entries stay on top. If a decision changes, add a new entry instead of rewriting history.
+
+### 2026-07-20 — Pause non-owner iOS distribution after withdrawing the device premise
+
+**Decision:** Return Task 3.7 to deferred work and mark Task 3.6 blocked after the owner clarified that no real second iPhone or iPad exists. Do not preserve, install, sign with, or publish the newly downloaded profile, and do not treat the privately exported identifier as non-owner iOS acceptance evidence. Keep the proven owner-only build and profile authoritative.
+
+**Why:** Ad Hoc authorization and physical acceptance require a real registered iPhone or iPad. A MacBook is a macOS device and cannot establish the required iOS installation evidence, so continuing with a two-device profile would encode a false premise and publish an untestable artifact.
+
+**Alternatives considered:** Continue based only on the exported identifier, which cannot prove a real tester device; use the MacBook as the second device, which does not test the iOS Ad Hoc application; or remove Firebase and Apple state immediately, which is a separate external mutation that the owner has not yet approved.
+
+### 2026-07-19 — Publish the first two-device iOS build
+
+**Decision:** Move Task 3.7 into active V1.1 work. Create a new Ad Hoc profile containing exactly the owner and approved tester iPhones, require build `2162`, and use the existing immutable preparation, audit, confirmation, publication, and receipt workflow. Keep physical tester acceptance in Task 3.8.
+
+**Why:** Task 3.6 established both Firebase membership and Apple authorization for exactly one non-owner device. A new profile and higher immutable build are now required because the published owner-only IPA cannot install on that iPhone, even though Firebase can offer it to the tester.
+
+**Alternatives considered:** Reuse build `2161`, which would map two different signed IPAs to one build identity; expand the profile with additional devices, which would exceed the approved tester scope; or combine publication and tester acceptance, which would erase the review boundary between release creation and device behavior.
 
 ### 2026-07-19 — Complete non-owner device authorization before reprovisioning
 
@@ -519,4 +535,5 @@ _Add new questions as they arise. Move resolved questions to §5 once answered, 
 - Carry the complete pinned Flutter/Dart and rustup-managed Rust/Cargo environment into every isolated release invocation. Interactive-shell defaults can select newer incompatible tools even when the repository lockfiles are correct.
 - Keep device authorization, Firebase delivery, Developer Mode, private-network access, and Museum account access as independent checks. A green result in one system does not diagnose or authorize the others.
 - Export Firebase's project-level iOS tester-device inventory privately and compare it against the current profile rather than copying a UDID by hand. Requiring exactly one difference made the Firebase-to-Apple handoff both less error-prone and independently bounded.
+- Confirm that an additional identifier belongs to a real, available non-owner iPhone or iPad before registering it with Apple or starting reprovisioning. A syntactically valid Firebase export is not physical-device acceptance evidence.
 - When physical acceptance evidence is unavailable, defer the whole dependent chain. Moving non-owner registration, reprovisioning/publication, and installation together to V1.1 is more accurate than claiming tester support from owner-only evidence.
