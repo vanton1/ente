@@ -17,6 +17,14 @@ iOS non-owner flow must begin with Firebase registration on a real tester
 iPhone or iPad; do not reuse a copied, Mac, simulator, or otherwise unverified
 device identifier.
 
+Source compatibility was last audited on 2026-07-20 by merging official Ente
+commit `e184e77116dbffd825b755c0fb2e4b924f837569` into the isolated
+`sync/upstream-2026-07-20` branch. Full mobile analysis, focused self-hosted
+tests, an Android debug build, and an iOS Simulator build passed. Those local
+artifacts were not installed or published, so the Firebase baselines in the
+table remain the current distributed releases until a later release workflow
+uses higher build numbers.
+
 Both applications compile a configurable HTTPS Museum default and provide the
 guarded Server Settings flow. A stored binding survives an in-place update.
 Changing server while signed in requires confirmed local logout before the new
@@ -32,6 +40,7 @@ binding and account flow become active.
 | Accept an invitation, install the app, connect Tailscale, select the server, or run the acceptance test | Android or iOS tester | [Tester onboarding guide](SELF_HOSTED_TESTER_ONBOARDING_GUIDE.md) |
 | Understand endpoint modes, stored binding, switching, rollback, and network boundaries | Maintainer | [Configurable-server architecture](../../../living_docs/ConfigurableSelfHostedMobileServerArchitecture.md) |
 | Understand Ad Hoc signing, immutable iOS preparation, Firebase evidence, and recovery boundaries | Maintainer or operator | [iOS distribution architecture](../../../living_docs/FirebaseIOSDistributionArchitecture.md) |
+| Merge later official Ente changes into this fork without losing self-hosted behavior | Maintainer | [Upstream synchronization architecture](../../../living_docs/UpstreamEnteSynchronizationArchitecture.md) |
 
 The tester guide is the only current document intended to be sent directly to
 testers. The operator supplies the exact Firebase invitation, Tailscale access,

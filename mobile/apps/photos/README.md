@@ -39,9 +39,7 @@ You can alternatively install the build from PlayStore or F-Droid.
 
 1. Install [Flutter v3.38.10](https://flutter.dev/docs/get-started/install) and [Rust](https://www.rust-lang.org/tools/install).
 
-2. Install dependencies and generate Rust bindings using one of these methods:
-   - **Using Flutter:** From any folder inside `mobile/`, run `flutter pub get --enforce-lockfile`, then from `rust/`, run `cargo codegen frb`.
-   - **Using Melos:** Install Melos with `dart pub global activate melos`, then from any folder inside `mobile/`, run `melos bootstrap` and `melos run codegen:rust`.
+2. From any folder inside `mobile/`, install the workspace dependencies with `flutter pub get --enforce-lockfile`. Then, from `rust/`, generate the Rust bindings with `cargo codegen frb`.
 
 3. Run the app:
    - Android: `flutter run --flavor independent`
@@ -120,9 +118,9 @@ repository-pinned Flutter and Dart executables when they are not on `PATH`.
 The wrapper always builds the shared `selfhosted` scheme and its
 `SelfHostedRunner` target. That target uses the unique bundle identifier
 `me.vanton.ente.photos.selfhosted`, embeds no Share Extension or widgets, and
-has no production push, associated-domain, or app-group entitlements. The
-official `Runner` target and scheme keep their existing settings and extension
-dependencies.
+requires iOS 15.1 or later. It has no production push, associated-domain, or
+app-group entitlements. The official `Runner` target and scheme keep their
+existing settings and extension dependencies.
 
 The compiled endpoint is used only when no valid server binding exists. An
 in-place upgrade from an earlier locked build retains its binding, account, and
