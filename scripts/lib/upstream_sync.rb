@@ -57,20 +57,42 @@ module EnteUpstreamSync
       @env = env
     end
 
-    def capture(*argv)
+    def capture(*argv, chdir: @root, env: {})
       stdout, stderr, status = Open3.capture3(
-        @env,
+        @env.merge(env),
         *argv,
-        chdir: @root.to_s,
+        chdir: Pathname(chdir).expand_path.to_s,
       )
       CommandResult.new(stdout: stdout, stderr: stderr, status: status.exitstatus)
     end
 
-    def run(*argv)
-      result = capture(*argv)
+    def run(*argv, chdir: @root, env: {})
+      result = capture(*argv, chdir: chdir, env: env)
       raise CommandFailure.new(argv, result) unless result.success?
 
       result.stdout.strip
+    end
+
+    def execute(*argv, chdir: @root, env: {}, output: $stdout)
+      recent = []
+      status = nil
+      Open3.popen2e(
+        @env.merge(env),
+        *argv,
+        chdir: Pathname(chdir).expand_path.to_s,
+      ) do |stdin, combined, wait_thread|
+        stdin.close
+        combined.each_line do |line|
+          output.write(line)
+          recent << line
+          recent.shift while recent.length > 200
+        end
+        status = wait_thread.value.exitstatus
+      end
+      result = CommandResult.new(stdout: recent.join, stderr: "", status: status)
+      raise CommandFailure.new(argv, result) unless result.success?
+
+      result
     end
   end
 
@@ -477,6 +499,283 @@ module EnteUpstreamSync
 
     def lines(value)
       value.lines.map(&:strip).reject(&:empty?)
+    end
+  end
+
+  class ToolResolver
+    def initialize(env: ENV)
+      @env = env
+    end
+
+    def resolve(with_builds: false, with_github: false)
+      flutter = executable("FLUTTER_BIN", ["flutter"])
+      dart_candidates = []
+      dart_candidates << File.join(File.dirname(flutter), "dart") if flutter
+      dart_candidates << "dart"
+
+      tools = {
+        git: executable(nil, ["git"]),
+        flutter: flutter,
+        dart: executable("DART_BIN", dart_candidates),
+        cargo: executable("CARGO_BIN", [File.join(home, ".cargo", "bin", "cargo"), "cargo"]),
+        pod: executable("POD_BIN", ["pod"]),
+      }
+      tools[:gh] = executable("GH_BIN", ["gh"]) if with_github
+      if with_builds
+        tools[:java] = executable(nil, ["java"])
+        tools[:xcodebuild] = executable(nil, ["xcodebuild"])
+      end
+
+      missing = tools.select { |_name, path| path.nil? }.keys
+      unless missing.empty?
+        raise SafetyFailure,
+              "Required tools are unavailable: #{missing.join(", ")}. Configure the pinned toolchain before validation."
+      end
+
+      tools
+    end
+
+    private
+
+    def executable(env_name, candidates)
+      configured = env_name && @env[env_name]
+      return expand_executable(configured) if configured && !configured.empty?
+
+      candidates.each do |candidate|
+        resolved = expand_executable(candidate)
+        return resolved if resolved
+      end
+      nil
+    end
+
+    def expand_executable(value)
+      return nil if value.nil? || value.empty?
+
+      if value.include?(File::SEPARATOR)
+        path = File.expand_path(value)
+        return path if File.file?(path) && File.executable?(path)
+
+        return nil
+      end
+
+      @env.fetch("PATH", "").split(File::PATH_SEPARATOR).each do |directory|
+        path = File.join(directory, value)
+        return path if File.file?(path) && File.executable?(path)
+      end
+      nil
+    end
+
+    def home
+      @env.fetch("HOME", Dir.home)
+    end
+  end
+
+  ValidationResult = Struct.new(
+    :branch,
+    :commit,
+    :official_sha,
+    :with_builds,
+    :steps,
+    keyword_init: true,
+  )
+
+  class Validator
+    PUBLIC_ENDPOINT = "https://photos.example.com"
+    FOCUSED_TESTS = %w[
+      apps/photos/test/core/network/endpoint_policy_test.dart
+      apps/photos/test/core/network/endpoint_switcher_test.dart
+      apps/photos/test/ui/settings/developer_settings_lock_test.dart
+      apps/photos/test/ui/settings/server_settings_page_test.dart
+      apps/photos/test/scripts/build_self_hosted_ios_adhoc_test.dart
+      apps/photos/test/scripts/prepare_self_hosted_android_release_test.dart
+      apps/photos/test/scripts/prepare_self_hosted_ios_release_test.dart
+      apps/photos/test/scripts/publish_self_hosted_android_release_test.dart
+      apps/photos/test/scripts/publish_self_hosted_ios_release_test.dart
+      apps/photos/test/scripts/self_hosted_ios_identity_test.dart
+    ].freeze
+    ENDPOINT_TESTS = %w[
+      apps/photos/test/core/network/endpoint_policy_test.dart
+      apps/photos/test/core/network/endpoint_switcher_test.dart
+      apps/photos/test/ui/settings/developer_settings_lock_test.dart
+      apps/photos/test/ui/settings/server_settings_page_test.dart
+    ].freeze
+
+    def initialize(runner:, root:, tools:, output: $stdout)
+      @runner = runner
+      @root = Pathname(root).expand_path
+      @mobile = @root.join("mobile")
+      @photos = @mobile.join("apps", "photos")
+      @rust = @root.join("rust")
+      @tools = tools
+      @output = output
+      @steps = []
+    end
+
+    def validate(with_builds: false)
+      branch = @runner.run("git", "symbolic-ref", "--quiet", "--short", "HEAD")
+      unless branch.start_with?(Synchronizer::BRANCH_PREFIX)
+        raise SafetyFailure,
+              "Validation requires a #{Synchronizer::BRANCH_PREFIX}* branch; current branch is #{branch}."
+      end
+      merge_head = @runner.capture("git", "rev-parse", "--verify", "MERGE_HEAD")
+      raise SafetyFailure, "Complete or abort the in-progress merge before validation." if merge_head.success?
+
+      ensure_clean("before validation")
+      official_sha = @runner.run("git", "rev-parse", "HEAD^2")
+      verify_ancestor(official_sha)
+
+      step("Initialize recursive submodules") do
+        execute(@tools[:git], "submodule", "update", "--init", "--recursive")
+      end
+      ensure_clean("after submodule initialization")
+
+      step("Restore locked Flutter workspace") do
+        execute(@tools[:flutter], "pub", "get", "--enforce-lockfile", chdir: @mobile)
+      end
+      ensure_clean("after Flutter dependency restoration")
+
+      step("Generate Rust bindings") do
+        execute(@tools[:cargo], "codegen", "frb", chdir: @rust, env: rust_env)
+      end
+      ensure_clean("after first Rust binding generation")
+      step("Verify Rust binding generation is stable") do
+        execute(@tools[:cargo], "codegen", "frb", chdir: @rust, env: rust_env)
+      end
+      ensure_clean("after second Rust binding generation")
+
+      step("Verify Photos CocoaPods lock") do
+        execute(@tools[:pod], "install", "--deployment", chdir: @photos.join("ios"))
+      end
+      ensure_clean("after CocoaPods verification")
+
+      step("Run combined self-hosted regression tests") do
+        execute(@tools[:flutter], "test", "--no-pub", *FOCUSED_TESTS, chdir: @mobile)
+      end
+      step("Run configurable endpoint tests") do
+        execute(
+          @tools[:flutter],
+          "test",
+          "--no-pub",
+          "--dart-define=configurableEndpoint=true",
+          "--dart-define=endpoint=#{PUBLIC_ENDPOINT}",
+          *ENDPOINT_TESTS,
+          chdir: @mobile,
+        )
+      end
+      step("Run locked endpoint compatibility tests") do
+        execute(
+          @tools[:flutter],
+          "test",
+          "--no-pub",
+          "--dart-define=lockedEndpoint=true",
+          "--dart-define=endpoint=#{PUBLIC_ENDPOINT}",
+          *ENDPOINT_TESTS,
+          chdir: @mobile,
+        )
+      end
+
+      step("Check formatting of tracked Dart sources") do
+        tracked_dart_files.each_slice(200) do |files|
+          execute(
+            @tools[:dart],
+            "format",
+            "--output=none",
+            "--set-exit-if-changed",
+            *files,
+          )
+        end
+      end
+      ensure_clean("after formatting verification")
+
+      step("Analyze complete mobile workspace") do
+        execute(@tools[:flutter], "analyze", "--no-pub", chdir: @mobile)
+      end
+
+      if with_builds
+        step("Build guarded Android debug APK") do
+          execute(
+            @photos.join("scripts", "build_self_hosted_android.sh").to_s,
+            "--debug",
+            chdir: @photos,
+            env: build_env,
+          )
+        end
+        ensure_clean("after Android debug build")
+        step("Build guarded iOS Simulator app") do
+          execute(
+            @photos.join("scripts", "build_self_hosted_ios.sh").to_s,
+            "--simulator",
+            chdir: @photos,
+            env: build_env,
+          )
+        end
+        ensure_clean("after iOS Simulator build")
+      end
+
+      ensure_clean("after validation")
+      ValidationResult.new(
+        branch: branch,
+        commit: @runner.run("git", "rev-parse", "HEAD"),
+        official_sha: official_sha,
+        with_builds: with_builds,
+        steps: @steps.dup,
+      )
+    rescue CommandFailure => error
+      raise SafetyFailure, "Validation command failed: #{error.message}"
+    end
+
+    private
+
+    def step(name)
+      @output.puts("\n==> #{name}")
+      yield
+      @steps << name
+      @output.puts("Passed: #{name}")
+    end
+
+    def execute(*argv, chdir: @root, env: {})
+      @runner.execute(*argv, chdir: chdir, env: env, output: @output)
+    end
+
+    def ensure_clean(context)
+      status = @runner.run("git", "status", "--porcelain", "--untracked-files=all")
+      return if status.empty?
+
+      raise SafetyFailure,
+            "Tracked or untracked source drift detected #{context}:\n#{status}\nInspect and commit intentional repairs before resuming."
+    end
+
+    def verify_ancestor(official_sha)
+      result = @runner.capture("git", "merge-base", "--is-ancestor", official_sha, "HEAD")
+      return if result.status.zero?
+
+      raise SafetyFailure, "Validation branch does not contain official SHA #{official_sha}."
+    end
+
+    def tracked_dart_files
+      raw = @runner.run("git", "ls-files", "-z", "*.dart")
+      files = raw.split("\0").reject(&:empty?)
+      raise SafetyFailure, "No tracked Dart files were found." if files.empty?
+
+      files
+    end
+
+    def rust_env
+      path = [File.dirname(@tools[:cargo]), ENV.fetch("PATH", "")].reject(&:empty?).join(File::PATH_SEPARATOR)
+      { "PATH" => path }
+    end
+
+    def build_env
+      {
+        "ENTE_SELF_HOSTED_ENDPOINT" => PUBLIC_ENDPOINT,
+        "FLUTTER_BIN" => @tools[:flutter],
+        "DART_BIN" => @tools[:dart],
+        "PATH" => [
+          File.dirname(@tools[:cargo]),
+          File.dirname(@tools[:flutter]),
+          ENV.fetch("PATH", ""),
+        ].reject(&:empty?).join(File::PATH_SEPARATOR),
+      }
     end
   end
 

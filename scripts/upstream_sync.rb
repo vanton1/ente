@@ -29,6 +29,8 @@ module EnteUpstreamSync
         run_start
       when "resume"
         run_resume
+      when "validate"
+        run_validate
       else
         usage("Unknown command: #{command}")
       end
@@ -55,7 +57,7 @@ module EnteUpstreamSync
 
     def run_check
       options = common_options(@argv, json: true)
-      root, runner, inspector = components(options)
+      _root, _runner, inspector = components(options)
       report = inspector.check(fetch: options[:fetch])
 
       if options[:json]
@@ -87,9 +89,36 @@ module EnteUpstreamSync
 
       root = repository_root
       runner = Runner.new(root: root)
-      inspector = Inspector.new(runner: runner, root: root)
-      result = Synchronizer.new(runner: runner, inspector: inspector, root: root).resume
+      result = Synchronizer.new(runner: runner, inspector: nil, root: root).resume
       print_merge_success(result)
+      0
+    end
+
+    def run_validate
+      options = { with_builds: false }
+      parser = OptionParser.new do |value|
+        value.banner = "Usage: ./scripts/sync_upstream.sh validate [options]"
+        value.on("--with-builds", "Also build guarded Android debug and iOS Simulator artifacts") do
+          options[:with_builds] = true
+        end
+        value.on("-h", "--help", "Show this help") { raise HelpRequested, value.to_s }
+      end
+      parser.parse!(@argv)
+      raise OptionParser::InvalidArgument, "Unexpected arguments: #{@argv.join(" ")}" unless @argv.empty?
+
+      root = repository_root
+      runner = Runner.new(root: root)
+      tools = ToolResolver.new.resolve(with_builds: options[:with_builds])
+      result = Validator.new(runner: runner, root: root, tools: tools, output: @stdout).validate(
+        with_builds: options[:with_builds],
+      )
+      @stdout.puts
+      @stdout.puts("Validation passed.")
+      @stdout.puts("Branch: #{result.branch}")
+      @stdout.puts("Commit: #{result.commit}")
+      @stdout.puts("Official SHA: #{result.official_sha}")
+      @stdout.puts("Platform builds: #{result.with_builds ? "passed" : "not requested"}")
+      @stdout.puts("Next: ./scripts/sync_upstream.sh publish")
       0
     end
 
@@ -174,11 +203,13 @@ module EnteUpstreamSync
           ./scripts/sync_upstream.sh check [options]
           ./scripts/sync_upstream.sh start [options]
           ./scripts/sync_upstream.sh resume
+          ./scripts/sync_upstream.sh validate [--with-builds]
 
         Commands:
           check   Fetch and report exact upstream drift and local readiness
           start   Create a dated integration branch and merge the exact official SHA
           resume  Finish or verify a preserved integration merge after manual repair
+          validate Run dependency, test, analysis, and optional debug-build gates
 
         Run a command with --help for its options. Conflicts and failed safety
         checks preserve the integration branch and never modify fork main.

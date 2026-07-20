@@ -25,10 +25,56 @@ class FakeRunner
     response.stdout.strip
   end
 
+  def execute(*argv, chdir:, env:, output:)
+    response = capture(*argv, chdir: chdir.to_s, env: env)
+    raise EnteUpstreamSync::CommandFailure.new(argv, response) unless response.success?
+
+    output.write(response.stdout)
+    response
+  end
+
   private
 
   def result(stdout, stderr: "", status: 0)
     EnteUpstreamSync::CommandResult.new(stdout: stdout, stderr: stderr, status: status)
+  end
+end
+
+class PermissiveValidationRunner
+  attr_reader :commands
+
+  def initialize(statuses: [""])
+    @commands = []
+    @statuses = statuses.dup
+  end
+
+  def run(*argv, **options)
+    @commands << [:run, argv, options]
+    case argv
+    when ["git", "symbolic-ref", "--quiet", "--short", "HEAD"]
+      "sync/upstream-2026-07-20-bbbbbbbbbb"
+    when ["git", "status", "--porcelain", "--untracked-files=all"]
+      @statuses.length > 1 ? @statuses.shift : @statuses.first
+    when ["git", "rev-parse", "HEAD^2"]
+      "b" * 40
+    when ["git", "ls-files", "-z", "*.dart"]
+      "mobile/a.dart\0mobile/b.dart\0"
+    when ["git", "rev-parse", "HEAD"]
+      "c" * 40
+    else
+      ""
+    end
+  end
+
+  def capture(*argv, **options)
+    @commands << [:capture, argv, options]
+    status = argv == ["git", "rev-parse", "--verify", "MERGE_HEAD"] ? 1 : 0
+    EnteUpstreamSync::CommandResult.new(stdout: "", stderr: "", status: status)
+  end
+
+  def execute(*argv, **options)
+    @commands << [:execute, argv, options]
+    EnteUpstreamSync::CommandResult.new(stdout: "", stderr: "", status: 0)
   end
 end
 
@@ -257,5 +303,70 @@ class SynchronizerTest < Minitest::Test
 
   def result(stdout: "", stderr: "", status:)
     EnteUpstreamSync::CommandResult.new(stdout: stdout, stderr: stderr, status: status)
+  end
+end
+
+class ValidatorTest < Minitest::Test
+  TOOLS = {
+    git: "/usr/bin/git",
+    gh: "/usr/bin/gh",
+    flutter: "/tool/flutter",
+    dart: "/tool/dart",
+    cargo: "/tool/cargo",
+    pod: "/tool/pod",
+  }.freeze
+
+  def test_runs_complete_default_gate_without_platform_builds
+    runner = PermissiveValidationRunner.new
+    output = StringIO.new
+
+    result = EnteUpstreamSync::Validator.new(
+      runner: runner,
+      root: "/repo",
+      tools: TOOLS,
+      output: output,
+    ).validate(with_builds: false)
+
+    assert_equal 10, result.steps.length
+    refute result.with_builds
+    assert runner.commands.any? { |kind, argv, _options| kind == :execute && argv.include?("--enforce-lockfile") }
+    assert runner.commands.any? { |kind, argv, _options| kind == :execute && argv.include?("--dart-define=configurableEndpoint=true") }
+    assert runner.commands.any? { |kind, argv, _options| kind == :execute && argv.include?("--dart-define=lockedEndpoint=true") }
+    refute runner.commands.any? { |kind, argv, _options| kind == :execute && argv.include?("build_self_hosted_android.sh") }
+  end
+
+  def test_with_builds_uses_guarded_wrappers_and_public_endpoint
+    runner = PermissiveValidationRunner.new
+    result = EnteUpstreamSync::Validator.new(
+      runner: runner,
+      root: "/repo",
+      tools: TOOLS.merge(java: "/tool/java", xcodebuild: "/tool/xcodebuild"),
+      output: StringIO.new,
+    ).validate(with_builds: true)
+
+    assert result.with_builds
+    build_commands = runner.commands.select do |kind, argv, _options|
+      kind == :execute && argv.first.include?("build_self_hosted_")
+    end
+    assert_equal 2, build_commands.length
+    build_commands.each do |_kind, _argv, options|
+      assert_equal EnteUpstreamSync::Validator::PUBLIC_ENDPOINT, options[:env]["ENTE_SELF_HOSTED_ENDPOINT"]
+    end
+  end
+
+  def test_source_drift_stops_before_dependency_commands_continue
+    runner = PermissiveValidationRunner.new(statuses: ["", " M generated.dart\n"])
+
+    error = assert_raises(EnteUpstreamSync::SafetyFailure) do
+      EnteUpstreamSync::Validator.new(
+        runner: runner,
+        root: "/repo",
+        tools: TOOLS,
+        output: StringIO.new,
+      ).validate(with_builds: false)
+    end
+
+    assert_includes error.message, "source drift"
+    refute runner.commands.any? { |kind, argv, _options| kind == :execute && argv.include?("--enforce-lockfile") }
   end
 end
