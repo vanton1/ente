@@ -1,10 +1,10 @@
 # Upstream Ente Synchronization
 
-**Status:** Living document. Updated at the end of every task.
+**Status:** Complete on the quarantined integration branch; awaiting owner review and any separately approved push/merge.
 **Started:** 2026-07-20
 **Owner:** vanton
 **Planning doc:** n/a
-**Companion docs:** `mobile/apps/photos/SELF_HOSTED_DOCUMENTATION.md`, `living_docs/ConfigurableSelfHostedMobileServerArchitecture.md`, `living_docs/FirebaseAndroidDistribution.md`, `living_docs/FirebaseIOSDistribution.md`, planned `living_docs/UpstreamEnteSynchronizationArchitecture.md`
+**Companion docs:** `mobile/apps/photos/SELF_HOSTED_DOCUMENTATION.md`, `living_docs/ConfigurableSelfHostedMobileServerArchitecture.md`, `living_docs/FirebaseAndroidDistribution.md`, `living_docs/FirebaseIOSDistribution.md`, `living_docs/UpstreamEnteSynchronizationArchitecture.md`
 
 ---
 
@@ -22,7 +22,7 @@
 | 4 | 4.2 | Build and audit the updated Android debug application | M | 🟢 done | Checksum-pinned temporary Temurin JDK 17.0.19 satisfied Gradle 8.11.1 and the `thermal` Java 17 toolchain after local Java 24/21 preflights failed without source changes. The guarded Flutter 3.38.10 wrapper built `build/app/outputs/flutter-apk/app-selfhosted-debug.apk` for `https://photos.example.com` in 345.8 seconds. Audit found package `me.vanton.ente.photos.selfhosted.debug`, version `1.3.59-debug` (2159), SDK 26/36/36, `debuggable=true`, `extractNativeLibs=false`, and debug ABIs ARMv7, ARM64, and x86_64 (the release preparer still explicitly requests/audits only the two ARM ABIs). The exact example endpoint is present in the compiled kernel. ZIP integrity and 16 KiB alignment passed; APK Signature Scheme v2 verified with one Android Debug signer. Size is 583,145,482 bytes and SHA-256 is `14ca254a8c1bf0863ecceb8f61d255109ecfc2d6df6f463e8dc9434ee60d4adc`. The ignored APK was neither installed nor published. |
 | 4 | 4.3 | Build and audit the updated iOS Simulator application | M | 🟢 done | The guarded Flutter 3.38.10 wrapper built the core-only `build/ios/Debug-selfhosted-iphonesimulator/SelfHostedRunner.app` for `https://photos.example.com`. Audit found bundle `me.vanton.ente.photos.selfhosted`, version `1.3.59` (2159), executable/product `SelfHostedRunner`, name `Ente Self-Hosted`, iOS 15.1, and thin arm64 application and App-framework binaries. The exact example endpoint is present in the compiled kernel; the bundle contains no extension or provisioning profile, carries an empty entitlement dictionary and a valid ad-hoc Simulator signature with no Team ID, and passed plist and deep strict signature validation. The 807-file, 566,028 KiB bundle has executable SHA-256 `4be201599266c58a4293c2657c95876dc1699058b420b5be020268a67480c335` and sorted file-manifest SHA-256 `8d9f2fd7a56d97d436ff7b31be35d758410145b4de0b2405566bafb2c7b68b7d`. Only dependency deprecation/compiler warnings remained; the ignored app was neither installed nor published. |
 | 5 | 5.1 | Update current documentation and validate the complete integration diff | S | 🟢 done | Updated the canonical index, build guide, contributor README, both distribution runbooks, and tester guide with the exact official source baseline, unpublished-sync boundary, Flutter 3.38.10/Dart 3.10.9/Rust 1.97/CocoaPods 1.17/JDK 17 toolchain, Android API 26/36 and NDK 28.2 contract, and iOS 15.1 floor. Corrected the one stale Ad Hoc reference from locked to configurable endpoint defines. All local Markdown targets exist; every self-hosted shell script passes Bash syntax; guarded endpoint validation canonicalizes the example in both wrappers; preparation/publication help surfaces pass with the pinned SDK; whitespace and the complete upstream-relative diff are clean; no unresolved markers or known private values were found. Both official `e184e77116` and fork `ed63fc138d` are ancestors, the branch is zero commits behind fetched `upstream/main`, and upstream push remains disabled. |
-| 5 | 5.2 | Document the repeatable as-built upstream synchronization architecture | S | ⚪ not started | Add `living_docs/UpstreamEnteSynchronizationArchitecture.md` with the settled remote/branch model, recurring merge sequence, conflict ownership, validation gates, release boundary, failure recovery, and maintenance checklist for the next upstream catch-up. |
+| 5 | 5.2 | Document the repeatable as-built upstream synchronization architecture | S | 🟢 done | Added `UpstreamEnteSynchronizationArchitecture.md` as the recurring maintainer runbook for remote quarantine, exact-SHA merge sequencing, conflict ownership, deterministic generation, behavioral/platform gates, artifact audits, final ancestry/privacy review, release separation, recovery, and the next-sync checklist. Linked it from the canonical documentation index and this record. All local documentation targets resolve, Markdown whitespace is clean, neither conflict markers nor known private values are present, and both source histories remain ancestors. After this task commit the branch is zero commits behind fetched official `main` and 80 integration/fork commits ahead; no remote, application, device, private server, Apple, or Firebase state changed. |
 
 **Legend:** ⚪ not started · 🟡 working · 🟢 done · 🔴 blocked / needs decision
 **Size:** XS · S · M · L · XL (never days or weeks).
@@ -283,9 +283,9 @@ mixed monorepo; rebasing all custom commits would rewrite published history.
 
 ## 6. Open questions
 
-_None. New conflicts that cannot preserve both upstream behavior and the
-self-hosted invariants stop the applicable task and are recorded here before a
-scope change._
+_None. The implementation plan is complete. Any push, pull request, merge to
+fork `main`, physical-device validation, private-server upgrade, or release is
+a separate owner-approved action._
 
 ---
 

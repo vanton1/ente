@@ -40,6 +40,7 @@ binding and account flow become active.
 | Accept an invitation, install the app, connect Tailscale, select the server, or run the acceptance test | Android or iOS tester | [Tester onboarding guide](SELF_HOSTED_TESTER_ONBOARDING_GUIDE.md) |
 | Understand endpoint modes, stored binding, switching, rollback, and network boundaries | Maintainer | [Configurable-server architecture](../../../living_docs/ConfigurableSelfHostedMobileServerArchitecture.md) |
 | Understand Ad Hoc signing, immutable iOS preparation, Firebase evidence, and recovery boundaries | Maintainer or operator | [iOS distribution architecture](../../../living_docs/FirebaseIOSDistributionArchitecture.md) |
+| Merge later official Ente changes into this fork without losing self-hosted behavior | Maintainer | [Upstream synchronization architecture](../../../living_docs/UpstreamEnteSynchronizationArchitecture.md) |
 
 The tester guide is the only current document intended to be sent directly to
 testers. The operator supplies the exact Firebase invitation, Tailscale access,
