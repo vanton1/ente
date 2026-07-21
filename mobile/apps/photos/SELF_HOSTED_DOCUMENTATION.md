@@ -40,7 +40,8 @@ binding and account flow become active.
 | Accept an invitation, install the app, connect Tailscale, select the server, or run the acceptance test | Android or iOS tester | [Tester onboarding guide](SELF_HOSTED_TESTER_ONBOARDING_GUIDE.md) |
 | Understand endpoint modes, stored binding, switching, rollback, and network boundaries | Maintainer | [Configurable-server architecture](../../../living_docs/ConfigurableSelfHostedMobileServerArchitecture.md) |
 | Understand Ad Hoc signing, immutable iOS preparation, Firebase evidence, and recovery boundaries | Maintainer or operator | [iOS distribution architecture](../../../living_docs/FirebaseIOSDistributionArchitecture.md) |
-| Merge later official Ente changes into this fork without losing self-hosted behavior | Maintainer | [Upstream synchronization architecture](../../../living_docs/UpstreamEnteSynchronizationArchitecture.md) |
+| Run, pause, recover, or review an official Ente synchronization | Maintainer or operator | [Upstream synchronization runbook](../../../UPSTREAM_SYNC.md) |
+| Understand the synchronization state machine, permissions, provenance, and safety boundaries | Maintainer | [Upstream synchronization architecture](../../../living_docs/UpstreamEnteSynchronizationArchitecture.md) |
 
 The tester guide is the only current document intended to be sent directly to
 testers. The operator supplies the exact Firebase invitation, Tailscale access,
@@ -55,6 +56,8 @@ Museum origin, web-app origin, and account instructions privately.
 - The **tester guide** owns everything a tester performs on a device.
 - The **architecture documents** explain current system boundaries and settled
   behavior; they are not recurring release checklists.
+- The **upstream synchronization runbook** owns current drift, integration,
+  validation, publication, and recovery commands.
 - The **living documents** preserve project decisions and acceptance evidence.
   They are historical implementation records, not current runbooks.
 - The Photos [README](README.md) is a contributor entry point, not another
