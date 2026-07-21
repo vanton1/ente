@@ -616,22 +616,22 @@ module EnteUpstreamSync
   class Validator
     PUBLIC_ENDPOINT = "https://photos.example.com"
     FOCUSED_TESTS = %w[
-      apps/photos/test/core/network/endpoint_policy_test.dart
-      apps/photos/test/core/network/endpoint_switcher_test.dart
-      apps/photos/test/ui/settings/developer_settings_lock_test.dart
-      apps/photos/test/ui/settings/server_settings_page_test.dart
-      apps/photos/test/scripts/build_self_hosted_ios_adhoc_test.dart
-      apps/photos/test/scripts/prepare_self_hosted_android_release_test.dart
-      apps/photos/test/scripts/prepare_self_hosted_ios_release_test.dart
-      apps/photos/test/scripts/publish_self_hosted_android_release_test.dart
-      apps/photos/test/scripts/publish_self_hosted_ios_release_test.dart
-      apps/photos/test/scripts/self_hosted_ios_identity_test.dart
+      test/core/network/endpoint_policy_test.dart
+      test/core/network/endpoint_switcher_test.dart
+      test/ui/settings/developer_settings_lock_test.dart
+      test/ui/settings/server_settings_page_test.dart
+      test/scripts/build_self_hosted_ios_adhoc_test.dart
+      test/scripts/prepare_self_hosted_android_release_test.dart
+      test/scripts/prepare_self_hosted_ios_release_test.dart
+      test/scripts/publish_self_hosted_android_release_test.dart
+      test/scripts/publish_self_hosted_ios_release_test.dart
+      test/scripts/self_hosted_ios_identity_test.dart
     ].freeze
     ENDPOINT_TESTS = %w[
-      apps/photos/test/core/network/endpoint_policy_test.dart
-      apps/photos/test/core/network/endpoint_switcher_test.dart
-      apps/photos/test/ui/settings/developer_settings_lock_test.dart
-      apps/photos/test/ui/settings/server_settings_page_test.dart
+      test/core/network/endpoint_policy_test.dart
+      test/core/network/endpoint_switcher_test.dart
+      test/ui/settings/developer_settings_lock_test.dart
+      test/ui/settings/server_settings_page_test.dart
     ].freeze
 
     def initialize(runner:, root:, tools:, output: $stdout)
@@ -684,7 +684,7 @@ module EnteUpstreamSync
       ensure_clean("after CocoaPods verification")
 
       step("Run combined self-hosted regression tests") do
-        execute(@tools[:flutter], "test", "--no-pub", *FOCUSED_TESTS, chdir: @mobile)
+        execute(@tools[:flutter], "test", "--no-pub", *FOCUSED_TESTS, chdir: @photos)
       end
       step("Run configurable endpoint tests") do
         execute(
@@ -694,7 +694,7 @@ module EnteUpstreamSync
           "--dart-define=configurableEndpoint=true",
           "--dart-define=endpoint=#{PUBLIC_ENDPOINT}",
           *ENDPOINT_TESTS,
-          chdir: @mobile,
+          chdir: @photos,
         )
       end
       step("Run locked endpoint compatibility tests") do
@@ -705,7 +705,7 @@ module EnteUpstreamSync
           "--dart-define=lockedEndpoint=true",
           "--dart-define=endpoint=#{PUBLIC_ENDPOINT}",
           *ENDPOINT_TESTS,
-          chdir: @mobile,
+          chdir: @photos,
         )
       end
 
