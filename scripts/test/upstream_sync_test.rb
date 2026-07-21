@@ -2,7 +2,28 @@
 
 require "minitest/autorun"
 require "pathname"
+require "rbconfig"
+require "tmpdir"
 require_relative "../lib/upstream_sync"
+
+class RunnerTest < Minitest::Test
+  def test_chdir_updates_process_pwd_for_tools_that_depend_on_it
+    Dir.mktmpdir("ente-upstream-runner-") do |root|
+      child = File.join(root, "child")
+      Dir.mkdir(child)
+      runner = EnteUpstreamSync::Runner.new(root: root)
+
+      pwd = runner.run(
+        RbConfig.ruby,
+        "-e",
+        "print ENV.fetch('PWD')",
+        chdir: child,
+      )
+
+      assert_equal child, pwd
+    end
+  end
+end
 
 class FakeRunner
   attr_reader :commands
@@ -581,6 +602,9 @@ class ValidatorTest < Minitest::Test
     assert runner.commands.any? { |kind, argv, _options| kind == :execute && argv.include?("--enforce-lockfile") }
     assert runner.commands.any? { |kind, argv, _options| kind == :execute && argv.include?("--dart-define=configurableEndpoint=true") }
     assert runner.commands.any? { |kind, argv, _options| kind == :execute && argv.include?("--dart-define=lockedEndpoint=true") }
+    test_commands = runner.commands.select { |kind, argv, _options| kind == :execute && argv.include?("test") }
+    assert test_commands.all? { |_kind, _argv, options| options[:chdir] == Pathname("/repo/mobile/apps/photos") }
+    assert test_commands.all? { |_kind, argv, _options| argv.grep(/\.dart\z/).all? { |path| path.start_with?("test/") } }
     refute runner.commands.any? { |kind, argv, _options| kind == :execute && argv.include?("build_self_hosted_android.sh") }
   end
 
