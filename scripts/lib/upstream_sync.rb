@@ -58,10 +58,11 @@ module EnteUpstreamSync
     end
 
     def capture(*argv, chdir: @root, env: {})
+      directory = Pathname(chdir).expand_path.to_s
       stdout, stderr, status = Open3.capture3(
-        @env.merge(env),
+        @env.merge(env).merge("PWD" => directory),
         *argv,
-        chdir: Pathname(chdir).expand_path.to_s,
+        chdir: directory,
       )
       CommandResult.new(stdout: stdout, stderr: stderr, status: status.exitstatus)
     end
@@ -76,10 +77,11 @@ module EnteUpstreamSync
     def execute(*argv, chdir: @root, env: {}, output: $stdout)
       recent = []
       status = nil
+      directory = Pathname(chdir).expand_path.to_s
       Open3.popen2e(
-        @env.merge(env),
+        @env.merge(env).merge("PWD" => directory),
         *argv,
-        chdir: Pathname(chdir).expand_path.to_s,
+        chdir: directory,
       ) do |stdin, combined, wait_thread|
         stdin.close
         combined.each_line do |line|

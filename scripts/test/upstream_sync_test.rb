@@ -2,7 +2,28 @@
 
 require "minitest/autorun"
 require "pathname"
+require "rbconfig"
+require "tmpdir"
 require_relative "../lib/upstream_sync"
+
+class RunnerTest < Minitest::Test
+  def test_chdir_updates_process_pwd_for_tools_that_depend_on_it
+    Dir.mktmpdir("ente-upstream-runner-") do |root|
+      child = File.join(root, "child")
+      Dir.mkdir(child)
+      runner = EnteUpstreamSync::Runner.new(root: root)
+
+      pwd = runner.run(
+        RbConfig.ruby,
+        "-e",
+        "print ENV.fetch('PWD')",
+        chdir: child,
+      )
+
+      assert_equal child, pwd
+    end
+  end
+end
 
 class FakeRunner
   attr_reader :commands

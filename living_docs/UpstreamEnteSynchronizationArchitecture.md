@@ -306,11 +306,12 @@ full mobile analysis, and guarded debug/Simulator builds then passed without
 external mutation.
 
 The hybrid automation is verified by `./scripts/test_upstream_sync.sh` using no
-network or external writes. The current suite contains 35 Ruby cases with 184
+network or external writes. The current suite contains 36 Ruby cases with 185
 assertions plus six Node issue cases. It covers URL identity, dirty/no-change
 readiness, unsafe upstream push, collision and exact-SHA merge behavior,
 preserved real-Git conflicts, staged and reviewed-repair resume, missing tools,
-generator drift, endpoint modes, optional guarded builds, confirmation and
+generator drift, subprocess working-directory propagation, endpoint modes,
+optional guarded builds, confirmation and
 tampering, canonical fork upload, partial retry and existing-PR reuse,
 issue create/update/close/idempotence/duplicates, workflow identity and minimal
 permissions, action pinning, absent source mutation, documentation links,
