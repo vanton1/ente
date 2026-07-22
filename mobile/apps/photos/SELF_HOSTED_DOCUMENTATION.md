@@ -17,13 +17,14 @@ iOS non-owner flow must begin with Firebase registration on a real tester
 iPhone or iPad; do not reuse a copied, Mac, simulator, or otherwise unverified
 device identifier.
 
-Source compatibility was last audited on 2026-07-20 by merging official Ente
-commit `e184e77116dbffd825b755c0fb2e4b924f837569` into the isolated
-`sync/upstream-2026-07-20` branch. Full mobile analysis, focused self-hosted
-tests, an Android debug build, and an iOS Simulator build passed. Those local
-artifacts were not installed or published, so the Firebase baselines in the
-table remain the current distributed releases until a later release workflow
-uses higher build numbers.
+Source compatibility was last audited on 2026-07-21 by merging official Ente
+commit `383aa8a687cbf3224fe1c2f5c1f42e9ef0645309` through the guarded upstream
+synchronization workflow. Full mobile analysis, focused self-hosted tests in
+configurable and locked modes, dependency restoration, stable Rust generation,
+CocoaPods deployment verification, and tracked-Dart formatting passed. Platform
+builds were not requested, and no application was installed or published, so
+the Firebase baselines in the table remain the current distributed releases
+until a later release workflow uses higher build numbers.
 
 Both applications compile a configurable HTTPS Museum default and provide the
 guarded Server Settings flow. A stored binding survives an in-place update.

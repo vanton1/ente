@@ -1,3 +1,12 @@
+> [!IMPORTANT]
+> **This is an independently maintained self-hosted mobile fork of Ente.**
+> It adds dedicated Android and iOS Ente Photos applications with guarded
+> server selection, separate application identities, private tester
+> distribution, and owner-reviewed synchronization with official
+> [`ente/ente`](https://github.com/ente/ente). These builds are not official
+> Ente releases. Read [About this fork](FORK.md) for its purpose, differences,
+> scope, and maintenance model.
+
 <div align="center">
 
 <img src=".github/assets/ente-rocketship.png" width="400"/>
