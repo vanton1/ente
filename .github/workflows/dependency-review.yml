@@ -1,29 +1,40 @@
-name: "Dependency review"
+name: Dependency review
 
 # Fail if a dependency added or updated by a PR has a known security advisory.
 
 on:
-    pull_request:
-        paths:
-            - ".github/workflows/dependency-review.yml"
-            - "**/Cargo.lock"
-            - "**/Cargo.toml"
-            - "**/go.mod"
-            - "**/go.sum"
-            - "**/package-lock.json"
-            - "**/package.json"
-            - "**/pubspec.lock"
-            - "**/pubspec.yaml"
-            - "**/uv.lock"
+  pull_request:
+    paths:
+      - ".github/actions/**"
+      - ".github/workflows/dependency-review.yml"
+      - "mobile/apps/photos/**/pubspec.lock"
+      - "mobile/apps/photos/**/pubspec.yaml"
+      - "mobile/packages/**/pubspec.lock"
+      - "mobile/packages/**/pubspec.yaml"
+      - "mobile/pubspec.lock"
+      - "mobile/pubspec.yaml"
+      - "rust/Cargo.lock"
+      - "rust/Cargo.toml"
+      - "rust/bindings/frb/Cargo.toml"
+      - "rust/crates/contacts/Cargo.toml"
+      - "rust/crates/core/Cargo.toml"
+      - "rust/crates/image/Cargo.toml"
+      - "rust/crates/photos/Cargo.toml"
 
 permissions:
-    contents: read
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-    dependency-review:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Dependency review
-              uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-              with:
-                  fail-on-scopes: runtime, development, unknown
+  dependency-review:
+    if: github.repository == 'vanton1/ente'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Reject vulnerable dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-scopes: runtime, development, unknown

@@ -1,53 +1,40 @@
-# The only reason we're making a custom CodeQL configuration is because the
-# default setup does not have an option to run daily / weekly instead of per
-# push, which is too slow.
-#
-# In the future, it might become faster. Then just delete this file, and revert
-# to the default configuration.
-#
-# References:
-# https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/
-
-name: "CodeQL"
+name: CodeQL (GitHub Actions)
 
 on:
-    workflow_dispatch: # Allow running manually
-    schedule:
-        - cron: "22 1 * * 1"
+  pull_request:
+    paths:
+      - ".github/actions/**"
+      - ".github/workflows/**"
+  schedule:
+    - cron: "22 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-    analyze:
-        name: Analyze (${{ matrix.language }})
-        runs-on: 'ubuntu-latest'
-        permissions:
-            contents: read
-            # Required for all workflows.
-            security-events: write
-            # Required to fetch internal or private CodeQL packs.
-            packages: read
+  analyze-actions:
+    if: github.repository == 'vanton1/ente'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout workflow source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
-                    - language: actions
-                      build-mode: none
-                    - language: go
-                      build-mode: autobuild
-                    - language: javascript-typescript
-                      build-mode: none
+      - name: Initialize CodeQL for GitHub Actions
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          languages: actions
+          build-mode: none
 
-        steps:
-            - name: Checkout
-              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-            - name: Initialize CodeQL
-              uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
-              with:
-                  languages: ${{ matrix.language }}
-                  build-mode: ${{ matrix.build-mode }}
-
-            - name: Perform CodeQL Analysis
-              uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
-              with:
-                  category: "/language:${{matrix.language}}"
+      - name: Analyze GitHub Actions
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          category: /language:actions

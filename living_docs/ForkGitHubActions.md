@@ -17,7 +17,7 @@
 | 2 | 2.1 | Add Linux CI for the self-hosted Photos mobile behavior and source quality | M | 🟢 done | Replaced the inherited broad mobile lint with a least-privilege Linux workflow and one reproducible script covering standard, configurable, and locked endpoint modes, Linux-portable Android release contracts, generated Rust bindings, tracked-Dart formatting, and full mobile analysis. Local proof: 181 focused tests passed across the three modes, formatting was unchanged, analysis reported no issues, the workflow parses, and the workflow-security contract passes. |
 | 2 | 2.2 | Add macOS CI for the self-hosted iOS contracts and deterministic CocoaPods state | M | 🟢 done | Replaced the all-app Podfile check with a Photos-only macOS workflow that pins Flutter, Ruby, and CocoaPods 1.17.0, runs the four Apple-tool/release contracts, and verifies `pod install --deployment` without signing or publication. Local proof: all 51 iOS tests passed, the pinned Podfile installed with no tracked changes, the workflow parses, and workflow security passes. |
 | 2 | 2.3 | Preserve and harden upstream-drift and workflow-security checks | S | 🟢 done | Kept the two fork-owned maintenance workflows, moved both to a fixed Ubuntu image, added the exact fork guard and timeout to the trusted workflow checker, and disabled persisted checkout credentials in both of its checkouts. The drift job remains schedule/manual only with the minimum `contents: read` and `issues: write` permissions. All 42 Ruby/Node drift contracts and 187 assertions passed with the workflow-security scan. |
-| 3 | 3.1 | Repair dependency review and retain only useful security scanning | M | ⚪ not started | Enable or adapt supported GitHub dependency features and keep CodeQL coverage only where it produces relevant, actionable results for this fork. |
+| 3 | 3.1 | Repair dependency review and retain only useful security scanning | M | 🟢 done | Enabled GitHub vulnerability alerts and the dependency graph, then narrowed dependency review to Photos mobile Pub/Rust manifests and pinned workflow actions. The dependency graph now exports 3,902 packages and its comparison API succeeds. Replaced broad Go/JavaScript/Actions CodeQL with least-privilege Actions-only PR, weekly, and manual scanning; both workflows use fixed runners, timeouts, exact fork guards, SHA-pinned actions, and no secrets. |
 | 3 | 3.2 | Remove remaining unrelated product and monorepo checks | S | ⚪ not started | Remove inherited Ensu, Auth, Locker, desktop, web, server, Rust, docs, infrastructure, and other checks that do not protect the self-hosted Photos mobile fork. |
 | 3 | 3.3 | Enforce the exact fork workflow allowlist and security contract | M | ⚪ not started | Reject unapproved workflow files, unpinned actions, excessive permissions, unsafe triggers, or silently reintroduced upstream automation. |
 | 4 | 4.1 | Validate the complete workflow set locally and in controlled GitHub runs | M | ⚪ not started | Prove relevant-path execution, irrelevant-path filtering, blocking failures, successful checks, and absence of release/deployment mutations through local contracts and owner-reviewed GitHub runs. |
@@ -214,6 +214,30 @@ in the 38-file inherited inventory.
 > Append-only. Newest entries stay on top. Never delete an entry; if a decision
 > changes, add a newer entry explaining the reversal.
 
+### 2026-07-22 — Enable dependency evidence and scan workflow code only
+
+**Decision:** Enable vulnerability alerts and the dependency graph for the
+public fork, retain dependency review for the Photos mobile Pub/Rust boundary,
+and reduce CodeQL to the `actions` language on workflow changes plus a weekly
+backstop.
+
+**Why:** GitHub documents the dependency graph as the prerequisite for
+dependency review, and enabling vulnerability alerts enabled that graph. Its
+SBOM and comparison APIs now return valid data. GitHub Actions is the only
+CodeQL language directly owned by this workflow-cleanup scope; repository-wide
+Go and JavaScript scanning would restore unrelated monorepo cost.
+
+**Rollback:** `DELETE /repos/vanton1/ente/vulnerability-alerts` disables the
+alerts and dependency graph. Deleting or reverting the two workflow edits
+removes their checks without changing application or distribution state.
+
+**References:** [GitHub dependency review](https://docs.github.com/en/code-security/concepts/supply-chain-security/dependency-review),
+[enabling the dependency graph](https://docs.github.com/en/enterprise-cloud@latest/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/enable-dependency-graph),
+and [repository security endpoints](https://docs.github.com/en/rest/repos/repos).
+
+**Alternatives considered:** Leave dependency review broken, or keep broad
+upstream CodeQL coverage for languages the fork does not maintain.
+
 ### 2026-07-22 — Keep maintenance mutations isolated from pull requests
 
 **Decision:** Keep upstream drift detection on schedule/manual triggers with
@@ -382,8 +406,6 @@ would require recreating official Ente infrastructure and credentials.
 _Add new questions as they arise. Move resolved questions to §5 once answered,
 with the resolution as the decision._
 
-- Which supported CodeQL languages and dependency manifests yield actionable
-  coverage for the fork after repository security settings are audited?
 - Does fork `main` already have branch protection or rulesets, and which final
   check names must become required after controlled live validation?
 
