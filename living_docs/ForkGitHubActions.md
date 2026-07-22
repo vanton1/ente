@@ -19,7 +19,7 @@
 | 2 | 2.3 | Preserve and harden upstream-drift and workflow-security checks | S | 🟢 done | Kept the two fork-owned maintenance workflows, moved both to a fixed Ubuntu image, added the exact fork guard and timeout to the trusted workflow checker, and disabled persisted checkout credentials in both of its checkouts. The drift job remains schedule/manual only with the minimum `contents: read` and `issues: write` permissions. All 42 Ruby/Node drift contracts and 187 assertions passed with the workflow-security scan. |
 | 3 | 3.1 | Repair dependency review and retain only useful security scanning | M | 🟢 done | Enabled GitHub vulnerability alerts and the dependency graph, then narrowed dependency review to Photos mobile Pub/Rust manifests and pinned workflow actions. The dependency graph now exports 3,902 packages and its comparison API succeeds. Replaced broad Go/JavaScript/Actions CodeQL with least-privilege Actions-only PR, weekly, and manual scanning; both workflows use fixed runners, timeouts, exact fork guards, SHA-pinned actions, and no secrets. |
 | 3 | 3.2 | Remove remaining unrelated product and monorepo checks | S | 🟢 done | Deleted the nine audited read-only but unrelated desktop, documentation-site, Ensu Android/iOS, staff-infrastructure, broad Rust, server, and web checks. Exactly six intended workflows remain; all parse and the current security checker passes across the six workflows and two local actions. |
-| 3 | 3.3 | Enforce the exact fork workflow allowlist and security contract | M | ⚪ not started | Reject unapproved workflow files, unpinned actions, excessive permissions, unsafe triggers, or silently reintroduced upstream automation. |
+| 3 | 3.3 | Enforce the exact fork workflow allowlist and security contract | M | 🟢 done | Replaced the advisory checker with an exact contract for six workflow files and the pinned Flutter setup action, and removed the now-unused inherited web-deployment action. The checker rejects missing/unexpected automation, trigger or permission drift, secrets, unpinned actions, persisted checkout credentials, mutable runner labels, missing fork guards/timeouts, and unapproved environments. Four fixture tests with 28 assertions prove pass and fail cases; the complete drift/security suite remains green. |
 | 4 | 4.1 | Validate the complete workflow set locally and in controlled GitHub runs | M | ⚪ not started | Prove relevant-path execution, irrelevant-path filtering, blocking failures, successful checks, and absence of release/deployment mutations through local contracts and owner-reviewed GitHub runs. |
 | 4 | 4.2 | Document the as-built fork GitHub Actions architecture | S | ⚪ not started | Update fork navigation and write `ForkGitHubActionsArchitecture.md` with the final allowlist, triggers, jobs, permissions, failure behavior, rollback, and upstream-adoption procedure. |
 
@@ -213,6 +213,23 @@ in the 38-file inherited inventory.
 
 > Append-only. Newest entries stay on top. Never delete an entry; if a decision
 > changes, add a newer entry explaining the reversal.
+
+### 2026-07-22 — Treat the workflow set as a tested allowlist
+
+**Decision:** Approve exactly six workflow files and one local setup action.
+Reject both additions and removals unless the trusted checker, its fixture
+tests, and the allowlist change together under the workflow approval
+environment.
+
+**Why:** Upstream synchronization can restore deleted workflows or supporting
+actions without producing a merge conflict. Exact filenames, triggers,
+permissions, runners, timeouts, environments, credentials, action pins, and
+secret-free source turn that silent reintroduction into a blocking review
+failure.
+
+**Alternatives considered:** Scan only whatever files happen to exist, which
+cannot detect restored automation, or keep the unused deployment composite
+action, which leaves executable but unowned publication code in the fork.
 
 ### 2026-07-22 — Enable dependency evidence and scan workflow code only
 
@@ -437,3 +454,12 @@ with the resolution as the decision._
 - Pull-request validation and issue mutation should remain separate workflows:
   the former can stay read-only, while the latter never evaluates untrusted PR
   code.
+
+### Phase 3 — Make security scope explicit and machine-checkable
+
+- Enabling GitHub's dependency graph must be proven through the same comparison
+  API used by dependency review, not inferred from a settings response alone.
+- Broad security scanning is not automatically better: Actions-only CodeQL and
+  Photos mobile dependency review provide evidence the fork can act on.
+- An allowlist must reject missing files as well as unexpected ones; otherwise
+  a security workflow can be deleted while the checker still reports success.
