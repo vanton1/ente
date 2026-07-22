@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   changes:
+    name: Detect workflow changes
     if: github.repository == 'vanton1/ente'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -35,6 +36,7 @@ jobs:
             core.setOutput("relevant", relevant ? "true" : "false");
 
   validate:
+    name: Workflow security validation
     needs: changes
     if: github.repository == 'vanton1/ente' && needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-24.04
@@ -61,7 +63,7 @@ jobs:
         run: ruby trusted/.github/scripts/check_workflow_security.rb
 
   gate:
-    name: Required gate
+    name: Workflow security gate
     needs: [changes, validate]
     if: always() && github.repository == 'vanton1/ente'
     runs-on: ubuntu-24.04

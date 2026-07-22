@@ -19,36 +19,50 @@ class WorkflowSecurityChecker
       triggers: %w[pull_request schedule workflow_dispatch],
       permissions: { "contents" => "read", "pull-requests" => "read", "security-events" => "write" },
       jobs: %w[analyze-actions],
+      check_names: { "analyze-actions" => "Actions CodeQL gate" },
     },
     ".github/workflows/dependency-review.yml" => {
       name: "Dependency review",
       triggers: %w[pull_request],
       permissions: { "contents" => "read" },
       jobs: %w[dependency-review],
+      check_names: { "dependency-review" => "Dependency review gate" },
     },
     ".github/workflows/self-hosted-mobile-linux.yml" => {
       name: "Self-hosted mobile (Linux)",
       triggers: %w[pull_request workflow_dispatch],
       permissions: { "contents" => "read", "pull-requests" => "read" },
       jobs: %w[validate],
+      check_names: { "validate" => "Linux mobile gate" },
     },
     ".github/workflows/self-hosted-mobile-macos.yml" => {
       name: "Self-hosted mobile (macOS)",
       triggers: %w[pull_request workflow_dispatch],
       permissions: { "contents" => "read", "pull-requests" => "read" },
       jobs: %w[changes gate validate],
+      check_names: {
+        "changes" => "Detect macOS mobile changes",
+        "gate" => "macOS mobile gate",
+        "validate" => "macOS mobile validation",
+      },
     },
     ".github/workflows/upstream-sync-drift.yml" => {
       name: "Upstream sync drift",
       triggers: %w[schedule workflow_dispatch],
       permissions: { "contents" => "read", "issues" => "write" },
       jobs: %w[detect],
+      check_names: {},
     },
     ".github/workflows/workflow-security-checks.yml" => {
       name: "Workflow security checks",
       triggers: %w[pull_request],
       permissions: { "contents" => "read", "pull-requests" => "read" },
       jobs: %w[changes gate validate],
+      check_names: {
+        "changes" => "Detect workflow changes",
+        "gate" => "Workflow security gate",
+        "validate" => "Workflow security validation",
+      },
     },
   }.freeze
   ALLOWED_ACTION_FILES = Set[
@@ -91,7 +105,7 @@ class WorkflowSecurityChecker
       validate_triggers(path, workflow, rule.fetch(:triggers))
       validate_pull_request_gate(path, workflow)
       validate_permissions(path, workflow, rule.fetch(:permissions))
-      validate_jobs(path, workflow, rule.fetch(:jobs))
+      validate_jobs(path, workflow, rule.fetch(:jobs), rule.fetch(:check_names))
     end
 
     print_report(workflow_paths.length + action_paths.length)
@@ -162,7 +176,7 @@ class WorkflowSecurityChecker
     add(:permissions, "#{path}: expected #{expected.inspect}, found #{actual.inspect}")
   end
 
-  def validate_jobs(path, workflow, expected_jobs)
+  def validate_jobs(path, workflow, expected_jobs, check_names)
     jobs = workflow["jobs"]
     unless jobs.is_a?(Hash) && !jobs.empty?
       add(:jobs, "#{path}: no jobs declared")
@@ -191,6 +205,11 @@ class WorkflowSecurityChecker
       timeout = job["timeout-minutes"]
       unless timeout.is_a?(Integer) && timeout.positive? && timeout <= 60
         add(:jobs, "#{path}: job #{name} needs a timeout from 1 to 60 minutes")
+      end
+
+      expected_check_name = check_names[name.to_s]
+      if expected_check_name && job["name"] != expected_check_name
+        add(:identity, "#{path}: job #{name} expected check name #{expected_check_name.inspect}, found #{job['name'].inspect}")
       end
 
       add(:permissions, "#{path}: job #{name} must not override top-level permissions") if job.key?("permissions")

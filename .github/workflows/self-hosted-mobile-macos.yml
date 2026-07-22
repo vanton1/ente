@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   changes:
+    name: Detect macOS mobile changes
     if: github.repository == 'vanton1/ente'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -52,6 +53,7 @@ jobs:
             core.setOutput("relevant", relevant ? "true" : "false");
 
   validate:
+    name: macOS mobile validation
     needs: changes
     if: github.repository == 'vanton1/ente' && needs.changes.outputs.relevant == 'true'
     runs-on: macos-26
@@ -78,7 +80,7 @@ jobs:
         run: ./scripts/test_self_hosted_mobile_macos.sh
 
   gate:
-    name: Required gate
+    name: macOS mobile gate
     needs: [changes, validate]
     if: always() && github.repository == 'vanton1/ente'
     runs-on: ubuntu-24.04

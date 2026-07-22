@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   analyze-actions:
+    name: Actions CodeQL gate
     if: github.repository == 'vanton1/ente'
     runs-on: ubuntu-24.04
     timeout-minutes: 15

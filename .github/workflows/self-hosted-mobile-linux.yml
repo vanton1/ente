@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   validate:
+    name: Linux mobile gate
     if: github.repository == 'vanton1/ente'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
