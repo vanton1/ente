@@ -1,0 +1,46 @@
+name: Self-hosted mobile (macOS)
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/setup-flutter/**"
+      - ".github/workflows/self-hosted-mobile-macos.yml"
+      - "mobile/apps/photos/**"
+      - "mobile/packages/**"
+      - "mobile/pubspec.lock"
+      - "mobile/pubspec.yaml"
+      - "scripts/test_self_hosted_mobile_macos.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.repository == 'vanton1/ente'
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source and submodules
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Install pinned Flutter
+        uses: ./.github/actions/setup-flutter
+
+      - name: Install pinned Ruby
+        uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626 # v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Install lockfile-compatible CocoaPods
+        run: gem install cocoapods --version 1.17.0 --no-document
+
+      - name: Run self-hosted iOS and CocoaPods validation
+        run: ./scripts/test_self_hosted_mobile_macos.sh
