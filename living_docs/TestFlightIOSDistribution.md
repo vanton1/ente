@@ -1,6 +1,6 @@
 # TestFlight iOS Distribution for the Self-Hosted Photos App
 
-**Status:** Migration abandoned; safe TestFlight-only cleanup completed. Firebase iOS remains active.
+**Status:** Migration abandoned; TestFlight-only cleanup and App Store Connect record removal completed. Firebase iOS remains active.
 **Started:** 2026-07-23
 **Owner:** vanton
 **Planning doc:** n/a
@@ -29,6 +29,7 @@
 |     4 |  4.3 | Mark the Firebase iOS design records historical and preserve release evidence       |  S   | 🔴 cancelled   | Cancelled when the owner abandoned the migration in Task 5.1. Firebase iOS records remain operative rather than historical.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 |     4 |  4.4 | Document the as-built TestFlight distribution architecture                          |  S   | 🔴 cancelled   | Cancelled when the owner abandoned the migration in Task 5.1 because no TestFlight system was built.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 |     5 |  5.1 | Remove TestFlight-only setup and retain Firebase iOS distribution                    |  S   | 🟢 done        | Removed Apple Developer profile `VL92TFRG6Z` (`Ente Photos Self-Hosted App Store`) and moved its downloaded copy from Downloads to Trash. Retained dormant App Store Connect app `6793832882` to preserve its name and SKU. Verified that there are no TestFlight builds, testers, or groups; the Ad Hoc profile `Ente Photos Self-Hosted Owner Ad Hoc 2`, bundle ID, pinned distribution certificate, registered devices, Firebase projects, groups, releases, scripts, tests, documentation, and Android distribution remain untouched. All 51 focused iOS identity, Ad Hoc build, preparation, and Firebase publication tests passed with pinned Flutter 3.38.10/Dart 3.10.9. |
+|     5 |  5.2 | Remove the dormant App Store Connect app record                                     |  XS  | 🟢 done        | The owner reports deleting App Store Connect app `6793832882` (`Ente Photos Self-Hosted`) after initially retaining it in Task 5.1. The signed-out App Store Connect session prevented an independent follow-up check. The Apple Developer bundle ID, distribution certificate, Ad Hoc profile, registered devices, and Firebase iOS distribution remain outside this deletion.                                                                                                                                                                                                                                                                               |
 
 **Legend:** ⚪ not started · 🟡 working · 🟢 done · 🔴 blocked / cancelled
 **Size:** XS · S · M · L · XL (never days or weeks).
@@ -256,6 +257,22 @@ and [App Store Connect API](https://developer.apple.com/documentation/appstoreco
 
 > Append-only. Newest entries on top. Never delete; if a decision is reversed,
 > add a new entry explaining the reversal.
+
+### 2026-07-23 — Remove the dormant App Store Connect app record
+
+**Decision:** Delete App Store Connect app `6793832882`
+(`Ente Photos Self-Hosted`) after initially retaining it during the safe
+TestFlight cleanup. Preserve the separate Apple Developer bundle ID and shared
+signing resources, and keep Firebase App Distribution with Ad Hoc signing as
+the active iOS delivery path. The owner completed the deletion; the signed-out
+App Store Connect session prevented an independent follow-up check.
+
+**Why:** The owner no longer wants the unused App Store Connect record after
+abandoning the TestFlight migration.
+
+**Alternatives considered:** Keep the dormant record to reserve its app name
+and preserve the record for a possible future TestFlight migration. The owner
+reversed that earlier choice and deleted the record.
 
 ### 2026-07-23 — Abandon TestFlight and retain Firebase iOS distribution
 
